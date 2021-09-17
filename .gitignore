@@ -1,3 +1,5 @@
 bin/*
-testdata/*
 coverage.out
+
+testdata/*
+!testdata/TestExample*

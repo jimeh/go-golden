@@ -11,98 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestUpdating(t *testing.T) {
-	tests := []struct {
-		name string
-		env  map[string]string
-		want bool
-	}{
-		{
-			name: "GOLDEN_UPDATE not set",
-			want: false,
-		},
-		{
-			name: "GOLDEN_UPDATE set to 0",
-			env:  map[string]string{"GOLDEN_UPDATE": "0"},
-			want: false,
-		},
-		{
-			name: "GOLDEN_UPDATE set to 1",
-			env:  map[string]string{"GOLDEN_UPDATE": "1"},
-			want: true,
-		},
-		{
-			name: "GOLDEN_UPDATE set to 2",
-			env:  map[string]string{"GOLDEN_UPDATE": "2"},
-			want: false,
-		},
-		{
-			name: "GOLDEN_UPDATE set to y",
-			env:  map[string]string{"GOLDEN_UPDATE": "y"},
-			want: true,
-		},
-		{
-			name: "GOLDEN_UPDATE set to n",
-			env:  map[string]string{"GOLDEN_UPDATE": "n"},
-			want: false,
-		},
-		{
-			name: "GOLDEN_UPDATE set to t",
-			env:  map[string]string{"GOLDEN_UPDATE": "t"},
-			want: true,
-		},
-		{
-			name: "GOLDEN_UPDATE set to f",
-			env:  map[string]string{"GOLDEN_UPDATE": "f"},
-			want: false,
-		},
-		{
-			name: "GOLDEN_UPDATE set to yes",
-			env:  map[string]string{"GOLDEN_UPDATE": "yes"},
-			want: true,
-		},
-		{
-			name: "GOLDEN_UPDATE set to no",
-			env:  map[string]string{"GOLDEN_UPDATE": "no"},
-			want: false,
-		},
-		{
-			name: "GOLDEN_UPDATE set to on",
-			env:  map[string]string{"GOLDEN_UPDATE": "on"},
-			want: true,
-		},
-		{
-			name: "GOLDEN_UPDATE set to off",
-			env:  map[string]string{"GOLDEN_UPDATE": "off"},
-			want: false,
-		},
-		{
-			name: "GOLDEN_UPDATE set to true",
-			env:  map[string]string{"GOLDEN_UPDATE": "true"},
-			want: true,
-		},
-		{
-			name: "GOLDEN_UPDATE set to false",
-			env:  map[string]string{"GOLDEN_UPDATE": "false"},
-			want: false,
-		},
-		{
-			name: "GOLDEN_UPDATE set to foobarnopebbq",
-			env:  map[string]string{"GOLDEN_UPDATE": "foobarnopebbq"},
-			want: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			envctl.WithClean(tt.env, func() {
-				got := Updating()
-
-				assert.Equal(t, tt.want, got)
-			})
-		})
-	}
-}
-
 func TestFile(t *testing.T) {
 	got := File(t)
 
@@ -122,11 +30,11 @@ func TestFile(t *testing.T) {
 		},
 		{
 			name: "foo/bar",
-			want: filepath.Join("testdata", "TestFile", "foo/bar.golden"),
+			want: filepath.Join("testdata", "TestFile", "foo", "bar.golden"),
 		},
 		{
 			name: `"foobar"`,
-			want: filepath.Join("testdata", "TestFile", "\"foobar\".golden"),
+			want: filepath.Join("testdata", "TestFile", "_foobar_.golden"),
 		},
 	}
 	for _, tt := range tests {
@@ -140,9 +48,9 @@ func TestFile(t *testing.T) {
 
 func TestGet(t *testing.T) {
 	t.Cleanup(func() {
-		err := os.RemoveAll(filepath.Join("testdata", t.Name()))
+		err := os.RemoveAll(filepath.Join("testdata", "TestGet"))
 		require.NoError(t, err)
-		err = os.Remove(filepath.Join("testdata", t.Name()+".golden"))
+		err = os.Remove(filepath.Join("testdata", "TestGet.golden"))
 		require.NoError(t, err)
 	})
 
@@ -188,7 +96,7 @@ func TestGet(t *testing.T) {
 		{
 			name: "thing: it's a thing!",
 			file: filepath.Join(
-				"testdata", "TestGet", "thing:_it's_a_thing!.golden",
+				"testdata", "TestGet", "thing__it's_a_thing!.golden",
 			),
 			want: []byte("A thing? Really? Are we getting lazy? :P"),
 		},
@@ -214,9 +122,9 @@ func TestGet(t *testing.T) {
 
 func TestSet(t *testing.T) {
 	t.Cleanup(func() {
-		err := os.RemoveAll(filepath.Join("testdata", t.Name()))
+		err := os.RemoveAll(filepath.Join("testdata", "TestSet"))
 		require.NoError(t, err)
-		err = os.Remove(filepath.Join("testdata", t.Name()+".golden"))
+		err = os.Remove(filepath.Join("testdata", "TestSet.golden"))
 		require.NoError(t, err)
 	})
 
@@ -258,7 +166,7 @@ func TestSet(t *testing.T) {
 		{
 			name: "thing: it's a thing!",
 			file: filepath.Join(
-				"testdata", "TestSet", "thing:_it's_a_thing!.golden",
+				"testdata", "TestSet", "thing__it's_a_thing!.golden",
 			),
 			content: []byte("A thing? Really? Are we getting lazy? :P"),
 		},
@@ -278,34 +186,74 @@ func TestSet(t *testing.T) {
 	}
 }
 
-func TestGetNamed(t *testing.T) {
+func TestFileP(t *testing.T) {
+	got := FileP(t, "sub-name")
+	assert.Equal(t,
+		filepath.Join("testdata", "TestFileP", "sub-name.golden"), got,
+	)
+
+	tests := []struct {
+		name  string
+		named string
+		want  string
+	}{
+		{
+			name:  "",
+			named: "sub-thing",
+			want: filepath.Join(
+				"testdata", "TestFileP", "#00", "sub-thing.golden",
+			),
+		},
+		{
+			name:  "fozbaz",
+			named: "email",
+			want: filepath.Join(
+				"testdata", "TestFileP", "fozbaz", "email.golden",
+			),
+		},
+		{
+			name:  "fozbaz",
+			named: "json",
+			want: filepath.Join(
+				"testdata", "TestFileP", "fozbaz#01", "json.golden",
+			),
+		},
+		{
+			name:  "foo/bar",
+			named: "hello/world",
+			want: filepath.Join(
+				"testdata", "TestFileP",
+				"foo", "bar",
+				"hello", "world.golden",
+			),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FileP(t, tt.named)
+
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestGetP(t *testing.T) {
 	t.Cleanup(func() {
-		err := os.RemoveAll(filepath.Join("testdata", t.Name()))
-		require.NoError(t, err)
-		err = os.Remove(filepath.Join("testdata", t.Name()+".golden"))
+		err := os.RemoveAll(filepath.Join("testdata", "TestGetP"))
 		require.NoError(t, err)
 	})
 
-	err := os.MkdirAll(filepath.Join("testdata", "TestGetNamed"), 0o755)
+	err := os.MkdirAll(filepath.Join("testdata", "TestGetP"), 0o755)
 	require.NoError(t, err)
 
-	content := []byte("this is the default golden file for TestGetNamed")
+	content := []byte("this is the named golden file for TestGetP")
 	err = ioutil.WriteFile( //nolint:gosec
-		filepath.Join("testdata", "TestGetNamed.golden"), content, 0o644,
-	)
-	require.NoError(t, err)
-
-	got := GetNamed(t, "")
-	assert.Equal(t, content, got)
-
-	content = []byte("this is the named golden file for TestGetNamed")
-	err = ioutil.WriteFile( //nolint:gosec
-		filepath.Join("testdata", "TestGetNamed", "sub-name.golden"),
+		filepath.Join("testdata", "TestGetP", "sub-name.golden"),
 		content, 0o644,
 	)
 	require.NoError(t, err)
 
-	got = GetNamed(t, "sub-name")
+	got := GetP(t, "sub-name")
 	assert.Equal(t, content, got)
 
 	tests := []struct {
@@ -315,15 +263,10 @@ func TestGetNamed(t *testing.T) {
 		want  []byte
 	}{
 		{
-			name: "",
-			file: filepath.Join("testdata", "TestGetNamed", "#00.golden"),
-			want: []byte("number double-zero here"),
-		},
-		{
 			name:  "",
 			named: "sub-zero-one",
 			file: filepath.Join(
-				"testdata", "TestGetNamed", "#01/sub-zero-one.golden",
+				"testdata", "TestGetP", "#00", "sub-zero-one.golden",
 			),
 			want: []byte("number zero-one here"),
 		},
@@ -331,7 +274,7 @@ func TestGetNamed(t *testing.T) {
 			name:  "foobar",
 			named: "email",
 			file: filepath.Join(
-				"testdata", "TestGetNamed", "foobar/email.golden",
+				"testdata", "TestGetP", "foobar", "email.golden",
 			),
 			want: []byte("foobar email here"),
 		},
@@ -339,7 +282,7 @@ func TestGetNamed(t *testing.T) {
 			name:  "foobar",
 			named: "json",
 			file: filepath.Join(
-				"testdata", "TestGetNamed", "foobar#01/json.golden",
+				"testdata", "TestGetP", "foobar#01", "json.golden",
 			),
 			want: []byte("foobar json here"),
 		},
@@ -347,7 +290,7 @@ func TestGetNamed(t *testing.T) {
 			name:  "foo/bar",
 			named: "hello/world",
 			file: filepath.Join(
-				"testdata", "TestGetNamed",
+				"testdata", "TestGetP",
 				"foo", "bar",
 				"hello", "world.golden",
 			),
@@ -357,7 +300,7 @@ func TestGetNamed(t *testing.T) {
 			name:  "john's lost flip-flop",
 			named: "left",
 			file: filepath.Join(
-				"testdata", "TestGetNamed", "john's_lost_flip-flop",
+				"testdata", "TestGetP", "john's_lost_flip-flop",
 				"left.golden",
 			),
 			want: []byte("Did John lose his left flip-flop again?"),
@@ -366,7 +309,7 @@ func TestGetNamed(t *testing.T) {
 			name:  "john's lost flip-flop",
 			named: "right",
 			file: filepath.Join(
-				"testdata", "TestGetNamed", "john's_lost_flip-flop#01",
+				"testdata", "TestGetP", "john's_lost_flip-flop#01",
 				"right.golden",
 			),
 			want: []byte("Did John lose his right flip-flop again?"),
@@ -375,14 +318,14 @@ func TestGetNamed(t *testing.T) {
 			name:  "thing: it's",
 			named: "a thing!",
 			file: filepath.Join(
-				"testdata", "TestGetNamed", "thing:_it's", "a thing!.golden",
+				"testdata", "TestGetP", "thing__it's", "a_thing!.golden",
 			),
 			want: []byte("A thing? Really? Are we getting lazy? :P"),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := NamedFile(t, tt.named)
+			f := FileP(t, tt.named)
 			dir := filepath.Dir(f)
 
 			err := os.MkdirAll(dir, 0o755)
@@ -391,7 +334,7 @@ func TestGetNamed(t *testing.T) {
 			err = ioutil.WriteFile(f, tt.want, 0o644) //nolint:gosec
 			require.NoError(t, err)
 
-			got := GetNamed(t, tt.named)
+			got := GetP(t, tt.named)
 
 			assert.Equal(t, filepath.FromSlash(tt.file), f)
 			assert.Equal(t, tt.want, got)
@@ -399,27 +342,17 @@ func TestGetNamed(t *testing.T) {
 	}
 }
 
-func TestSetNamed(t *testing.T) {
+func TestSetP(t *testing.T) {
 	t.Cleanup(func() {
-		err := os.RemoveAll(filepath.Join("testdata", t.Name()))
-		require.NoError(t, err)
-		err = os.Remove(filepath.Join("testdata", t.Name()+".golden"))
+		err := os.RemoveAll(filepath.Join("testdata", "TestSetP"))
 		require.NoError(t, err)
 	})
 
-	content := []byte("This is the default golden file for TestSetNamed ^_^")
-	SetNamed(t, "", content)
+	content := []byte("This is the named golden file for TestSetP ^_^")
+	SetP(t, "sub-name", content)
 
-	b, err := ioutil.ReadFile(filepath.Join("testdata", "TestSetNamed.golden"))
-	require.NoError(t, err)
-
-	assert.Equal(t, content, b)
-
-	content = []byte("This is the named golden file for TestSetNamed ^_^")
-	SetNamed(t, "sub-name", content)
-
-	b, err = ioutil.ReadFile(
-		filepath.Join("testdata", "TestSetNamed", "sub-name.golden"),
+	b, err := ioutil.ReadFile(
+		filepath.Join("testdata", "TestSetP", "sub-name.golden"),
 	)
 	require.NoError(t, err)
 
@@ -432,15 +365,10 @@ func TestSetNamed(t *testing.T) {
 		content []byte
 	}{
 		{
-			name:    "",
-			file:    filepath.Join("testdata", "TestSetNamed", "#00.golden"),
-			content: []byte("number double-zero strikes again"),
-		},
-		{
 			name:  "",
 			named: "sub-zero-one",
 			file: filepath.Join(
-				"testdata", "TestSetNamed", "#01", "sub-zero-one.golden",
+				"testdata", "TestSetP", "#00", "sub-zero-one.golden",
 			),
 			content: []byte("number zero-one sub-zero-one strikes again"),
 		},
@@ -448,7 +376,7 @@ func TestSetNamed(t *testing.T) {
 			name:  "foobar",
 			named: "email",
 			file: filepath.Join(
-				"testdata", "TestSetNamed", "foobar", "email.golden",
+				"testdata", "TestSetP", "foobar", "email.golden",
 			),
 			content: []byte("foobar here"),
 		},
@@ -456,22 +384,15 @@ func TestSetNamed(t *testing.T) {
 			name:  "foobar",
 			named: "json",
 			file: filepath.Join(
-				"testdata", "TestSetNamed", "foobar#01", "json.golden",
+				"testdata", "TestSetP", "foobar#01", "json.golden",
 			),
 			content: []byte("foobar here"),
-		},
-		{
-			name: "foo/bar",
-			file: filepath.Join(
-				"testdata", "TestSetNamed", "foo", "bar.golden",
-			),
-			content: []byte("foo/bar style sub-sub-folders works too"),
 		},
 		{
 			name:  "john's lost flip-flop",
 			named: "left",
 			file: filepath.Join(
-				"testdata", "TestSetNamed", "john's_lost_flip-flop",
+				"testdata", "TestSetP", "john's_lost_flip-flop",
 				"left.golden",
 			),
 			content: []byte("Did John lose his left flip-flop again?"),
@@ -480,7 +401,7 @@ func TestSetNamed(t *testing.T) {
 			name:  "john's lost flip-flop",
 			named: "right",
 			file: filepath.Join(
-				"testdata", "TestSetNamed", "john's_lost_flip-flop#01",
+				"testdata", "TestSetP", "john's_lost_flip-flop#01",
 				"right.golden",
 			),
 			content: []byte("Did John lose his right flip-flop again?"),
@@ -489,16 +410,16 @@ func TestSetNamed(t *testing.T) {
 			name:  "thing: it's",
 			named: "a thing!",
 			file: filepath.Join(
-				"testdata", "TestSetNamed", "thing:_it's", "a thing!.golden",
+				"testdata", "TestSetP", "thing__it's", "a_thing!.golden",
 			),
 			content: []byte("A thing? Really? Are we getting lazy? :P"),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := NamedFile(t, tt.named)
+			f := FileP(t, tt.named)
 
-			SetNamed(t, tt.named, tt.content)
+			SetP(t, tt.named, tt.content)
 
 			got, err := ioutil.ReadFile(f)
 			require.NoError(t, err)
@@ -509,53 +430,14 @@ func TestSetNamed(t *testing.T) {
 	}
 }
 
-func TestNamedFile(t *testing.T) {
-	got := NamedFile(t, "")
-	assert.Equal(t, "testdata/TestNamedFile.golden", got)
-
-	got = NamedFile(t, "sub-name")
-	assert.Equal(t, "testdata/TestNamedFile/sub-name.golden", got)
-
-	tests := []struct {
-		name  string
-		named string
-		want  string
-	}{
-		{
-			name:  "",
-			named: "",
-			want:  "testdata/TestNamedFile/#00.golden",
-		},
-		{
-			name:  "",
-			named: "sub-thing",
-			want:  "testdata/TestNamedFile/#01/sub-thing.golden",
-		},
-		{
-			name: "foobar",
-			want: "testdata/TestNamedFile/foobar.golden",
-		},
-		{
-			name:  "fozbaz",
-			named: "email",
-			want:  "testdata/TestNamedFile/fozbaz/email.golden",
-		},
-		{
-			name:  "fozbaz",
-			named: "json",
-			want:  "testdata/TestNamedFile/fozbaz#01/json.golden",
-		},
-		{
-			name:  "foo/bar",
-			named: "hello/world",
-			want:  "testdata/TestNamedFile/foo/bar/hello/world.golden",
-		},
-	}
-	for _, tt := range tests {
+func TestUpdate(t *testing.T) {
+	for _, tt := range envUpdateFuncTestCases {
 		t.Run(tt.name, func(t *testing.T) {
-			got := NamedFile(t, tt.named)
+			envctl.WithClean(tt.env, func() {
+				got := Update()
 
-			assert.Equal(t, tt.want, got)
+				assert.Equal(t, tt.want, got)
+			})
 		})
 	}
 }
