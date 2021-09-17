@@ -4,8 +4,8 @@
 
 <p align="center">
   <strong>
-    Yet another Go package for working with `*.golden` test files, with a focus
-    on simplicity through it's default behavior.
+    Yet another Go package for working with <code>*.golden</code> test files,
+    with a focus on simplicity through it's default behavior.
   </strong>
 </p>
 
@@ -32,14 +32,9 @@ alt="GitHub issues">
   </a>
 </p>
 
-Golden file names are based on the name of the test function and any subtest
-names by calling t.Name(). File names are sanitized to ensure they're compatible
-with Linux, macOS and Windows systems regardless of what crazy characters might
-be in a subtest's name.
-
 ## Import
 
-```
+```go
 import "github.com/jimeh/go-golden"
 ```
 
@@ -63,7 +58,7 @@ func TestExampleMyStruct(t *testing.T) {
 
 The above example will read/write to:
 
-    testdata/TestExampleMyStruct.golden
+- `testdata/TestExampleMyStruct.golden`
 
 To update the golden file (have `golden.Update()` return true), simply set the
 `GOLDEN_UPDATE` environment variable to one of `1`, `y`, `t`, `yes`, `on`, or
