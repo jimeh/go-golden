@@ -1,5 +1,80 @@
-# go-golden
+<h1 align="center">
+  go-golden
+</h1>
 
-Yet another Go package for working with `*.golden` test files.
+<p align="center">
+  <strong>
+    Yet another Go package for working with `*.golden` test files, with a focus
+    on simplicity through it's default behavior.
+  </strong>
+</p>
 
-Currently a work in progress.
+<p align="center">
+  <a href="https://pkg.go.dev/github.com/jimeh/go-golden">
+    <img src="https://img.shields.io/badge/%E2%80%8B-reference-387b97.svg?logo=go&logoColor=white"
+  alt="Go Reference">
+  </a>
+  <a href="https://github.com/jimeh/go-golden/actions">
+    <img src="https://img.shields.io/github/workflow/status/jimeh/go-golden/CI.svg?logo=github" alt="Actions Status">
+  </a>
+  <a href="https://codeclimate.com/github/jimeh/go-golden">
+    <img src="https://img.shields.io/codeclimate/coverage/jimeh/go-golden.svg?logo=code%20climate" alt="Coverage">
+  </a>
+  <a href="https://github.com/jimeh/go-golden/issues">
+    <img src="https://img.shields.io/github/issues-raw/jimeh/go-golden.svg?style=flat&logo=github&logoColor=white"
+alt="GitHub issues">
+  </a>
+  <a href="https://github.com/jimeh/go-golden/pulls">
+    <img src="https://img.shields.io/github/issues-pr-raw/jimeh/go-golden.svg?style=flat&logo=github&logoColor=white" alt="GitHub pull requests">
+  </a>
+  <a href="https://github.com/jimeh/go-golden/blob/master/LICENSE">
+    <img src="https://img.shields.io/github/license/jimeh/go-golden.svg?style=flat" alt="License Status">
+  </a>
+</p>
+
+Golden file names are based on the name of the test function and any subtest
+names by calling t.Name(). File names are sanitized to ensure they're compatible
+with Linux, macOS and Windows systems regardless of what crazy characters might
+be in a subtest's name.
+
+## Import
+
+```
+import "github.com/jimeh/go-golden"
+```
+
+## Usage
+
+Typical usage should look something like this:
+
+```go
+func TestExampleMyStruct(t *testing.T) {
+	got, err := json.Marshal(&MyStruct{Foo: "Bar"})
+	require.NoError(t, err)
+
+	if golden.Update() {
+		golden.Set(t, got)
+	}
+	want := golden.Get(t)
+
+	assert.Equal(t, want, got)
+}
+```
+
+The above example will read/write to:
+
+    testdata/TestExampleMyStruct.golden
+
+To update the golden file (have `golden.Update()` return true), simply set the
+`GOLDEN_UPDATE` environment variable to one of `1`, `y`, `t`, `yes`, `on`, or
+`true` when running tests.
+
+## Documentation
+
+Please see the
+[Go Reference](https://pkg.go.dev/github.com/jimeh/go-golden#section-documentation)
+for documentation and examples.
+
+## License
+
+[MIT](https://github.com/jimeh/go-golden/blob/master/LICENSE)
