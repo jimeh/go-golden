@@ -5,7 +5,7 @@
 <p align="center">
   <strong>
     Yet another Go package for working with <code>*.golden</code> test files,
-    with a focus on simplicity through it's default behavior.
+    with a focus on simplicity.
   </strong>
 </p>
 
@@ -40,8 +40,6 @@ import "github.com/jimeh/go-golden"
 
 ## Usage
 
-Typical usage should look something like this:
-
 ```go
 func TestExampleMyStruct(t *testing.T) {
 	got, err := json.Marshal(&MyStruct{Foo: "Bar"})
@@ -60,7 +58,7 @@ The above example will read/write to:
 
 - `testdata/TestExampleMyStruct.golden`
 
-To update the golden file (have `golden.Update()` return true), simply set the
+To update the golden file (have `golden.Update()` return `true`), simply set the
 `GOLDEN_UPDATE` environment variable to one of `1`, `y`, `t`, `yes`, `on`, or
 `true` when running tests.
 
