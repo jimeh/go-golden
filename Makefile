@@ -88,6 +88,18 @@ format: $(TOOLDIR)/goimports $(TOOLDIR)/gofumpt
 bench:
 	go test $(V) -count=1 -bench=$(BENCH) $(TESTARGS) ./...
 
+.PHONY: golden-update
+golden-update:
+	GOLDEN_UPDATE=1 $(MAKE) test
+
+.PHONY: golden-clean
+golden-clean:
+	find . -type f -name '*.golden' -path '*/testdata/*' -delete
+	find . -type d -empty -path '*/testdata/*' -delete
+
+.PHONY: golden-regen
+golden-regen: golden-clean golden-update
+
 #
 # Code Generation
 #
@@ -171,7 +183,7 @@ check-tidy:
 
 # Serve docs
 .PHONY: docs
-docs: godoc
+docs: $(TOOLDIR)/godoc
 	$(info serviing docs on http://127.0.0.1:6060/pkg/$(GOMODNAME)/)
 	@godoc -http=127.0.0.1:6060
 

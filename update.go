@@ -4,11 +4,14 @@ import "os"
 
 var truthyStrings = []string{"1", "y", "t", "yes", "on", "true"}
 
-type UpdatingFunc func() bool
+type UpdateFunc func() bool
 
-// EnvVarUpdateFunc checks if the GOLDEN_UPDATE environment variable is set to
+// EnvUpdateFunc checks if the GOLDEN_UPDATE environment variable is set to
 // one of "1", "y", "t", "yes", "on", or "true".
-func EnvVarUpdatingFunc() bool {
+//
+// This is also the default UpdateFunc used to determine the return value of
+// Update().
+func EnvUpdateFunc() bool {
 	env := os.Getenv("GOLDEN_UPDATE")
 	for _, v := range truthyStrings {
 		if env == v {
