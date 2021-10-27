@@ -187,8 +187,8 @@ func SetP(t *testing.T, name string, data []byte) {
 	global.SetP(t, name, data)
 }
 
-// Update returns true when golden is set to update golden files. Used to
-// determine if golden.Set() or golden.Write() should be called or not.
+// Update returns true when golden is set to update golden files. Should be used
+// to determine if golden.Set() or golden.SetP() should be called or not.
 //
 // Default behavior uses EnvUpdateFunc() to check if the "GOLDEN_UPDATE"
 // environment variable is set to a truthy value. To customize create a custom
@@ -348,8 +348,8 @@ func (s *Golden) set(t *testing.T, name string, data []byte) {
 	}
 }
 
-// Update returns true when golden is set to update golden files. Used to
-// determine if golden.Set() or golden.Write() should be called or not.
+// Update returns true when golden is set to update golden files. Should be used
+// to determine if golden.Set() or golden.SetP() should be called or not.
 //
 // Default behavior uses EnvUpdateFunc() to check if the "GOLDEN_UPDATE"
 // environment variable is set to a truthy value. To customize set a new
