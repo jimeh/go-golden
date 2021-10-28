@@ -144,6 +144,8 @@ var global = New()
 // File returns the filename of the golden file for the given *testing.T
 // instance as determined by t.Name().
 func File(t *testing.T) string {
+	t.Helper()
+
 	return global.File(t)
 }
 
@@ -151,6 +153,8 @@ func File(t *testing.T) string {
 // as determined by t.Name(). If no golden file can be found/read, it will fail
 // the test by calling t.Fatal().
 func Get(t *testing.T) []byte {
+	t.Helper()
+
 	return global.Get(t)
 }
 
@@ -158,12 +162,16 @@ func Get(t *testing.T) []byte {
 // determined by t.Name(). If writing fails it will fail the test by calling
 // t.Fatal() with error details.
 func Set(t *testing.T, data []byte) {
+	t.Helper()
+
 	global.Set(t, data)
 }
 
 // FileP returns the filename of the specifically named golden file for the
 // given *testing.T instance as determined by t.Name().
 func FileP(t *testing.T, name string) string {
+	t.Helper()
+
 	return global.FileP(t, name)
 }
 
@@ -174,6 +182,8 @@ func FileP(t *testing.T, name string) string {
 // This is very similar to Get(), but it allows multiple different golden files
 // to be used within the same one *testing.T instance.
 func GetP(t *testing.T, name string) []byte {
+	t.Helper()
+
 	return global.GetP(t, name)
 }
 
@@ -184,6 +194,8 @@ func GetP(t *testing.T, name string) []byte {
 // This is very similar to Set(), but it allows multiple different golden files
 // to be used within the same one *testing.T instance.
 func SetP(t *testing.T, name string, data []byte) {
+	t.Helper()
+
 	global.SetP(t, name, data)
 }
 
@@ -262,6 +274,7 @@ func (s *Golden) FileP(t *testing.T, name string) string {
 		if t != nil {
 			t.Fatal("golden: name cannot be empty")
 		}
+
 		return ""
 	}
 
@@ -277,6 +290,7 @@ func (s *Golden) FileP(t *testing.T, name string) string {
 func (s *Golden) GetP(t *testing.T, name string) []byte {
 	if name == "" {
 		t.Fatal("golden: name cannot be empty")
+
 		return nil
 	}
 
@@ -300,6 +314,7 @@ func (s *Golden) SetP(t *testing.T, name string, data []byte) {
 func (s *Golden) file(t *testing.T, name string) string {
 	if t.Name() == "" {
 		t.Fatalf("golden: could not determine filename for: %+v", t)
+
 		return ""
 	}
 
@@ -339,6 +354,7 @@ func (s *Golden) set(t *testing.T, name string, data []byte) {
 	err := os.MkdirAll(dir, s.DirMode)
 	if err != nil {
 		t.Fatalf("golden: failed to create directory: %s", err.Error())
+
 		return
 	}
 
