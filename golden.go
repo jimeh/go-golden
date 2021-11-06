@@ -1,14 +1,67 @@
 // Package golden is yet another package for working with *.golden test files,
-// with a focus on simplicity through it's default behavior.
+// with a focus on simplicity through it's default behavior, and marshaling
+// assertion helpers to validate JSON/YAML/XML format of structs.
 //
 // Golden file names are based on the name of the test function and any subtest
 // names by calling t.Name(). File names are sanitized to ensure they're
-// compatible with Linux, macOS and Windows systems regardless of what crazy
+// compatible with Linux, macOS and Windows systems regardless of what
 // characters might be in a subtest's name.
 //
-// Usage
+// Assertion Helpers
 //
-// Typical usage should look something like this:
+// There are marshaling assertion helpers for JSON, YAML, and XML. Each helper
+// operates in two stages:
+//
+// 1. Marshal the provided object to a byte slice and read the corresponding
+// golden file from disk followed by verifying both are identical.
+//
+// 2. Unmarshal the content of the golden file, verifying that the result is
+// identical to the original given object.
+//
+// Typical usage of a assertion helper would look something like this in a
+// tabular test:
+//
+//  type MyStruct struct {
+//      FooBar string `json:"foo_bar" yaml:"fooBar" xml:"Foo_Bar"`
+//  }
+//
+//  func TestMyStructMarshaling(t *testing.T) {
+//      tests := []struct {
+//          name string
+//          obj  *MyStruct
+//      }{
+//          {name: "empty", obj: &MyStruct{}},
+//          {name: "full", obj: &MyStruct{FooBar: "Hello World!"}},
+//      }
+//      for _, tt := range tests {
+//          t.Run(tt.name, func(t *testing.T) {
+//              golden.AssertJSONMarshaling(t, tt.obj)
+//              golden.AssertYAMLMarshaling(t, tt.obj)
+//              golden.AssertXMLMarshaling(t, tt.obj)
+//          })
+//      }
+//  }
+//
+// The above example will read from the following golden files:
+//
+//  testdata/TestMyStructMarshaling/empty/marshaled_json.golden
+//  testdata/TestMyStructMarshaling/empty/marshaled_xml.golden
+//  testdata/TestMyStructMarshaling/empty/marshaled_yaml.golden
+//  testdata/TestMyStructMarshaling/full/marshaled_json.golden
+//  testdata/TestMyStructMarshaling/full/marshaled_xml.golden
+//  testdata/TestMyStructMarshaling/full/marshaled_yaml.golden
+//
+// If a corresponding golden file cannot be found on disk, the test will fail.
+// To create/update golden files, simply set the GOLDEN_UPDATE environment
+// variable to one of "1", "y", "t", "yes", "on", or "true" when running the
+// tests.
+//
+// Golden files should be committed to source control, as it allow tests to fail
+// when the marshaling results for an object changes.
+//
+// Golden Usage
+//
+// Typical usage would look something like this:
 //
 //  func TestExampleMyStruct(t *testing.T) {
 //      got, err := json.Marshal(&MyStruct{Foo: "Bar"})
@@ -139,14 +192,14 @@ const (
 
 var DefaultUpdateFunc = EnvUpdateFunc
 
-var global = New()
+var globalGolden = New()
 
 // File returns the filename of the golden file for the given *testing.T
 // instance as determined by t.Name().
 func File(t *testing.T) string {
 	t.Helper()
 
-	return global.File(t)
+	return globalGolden.File(t)
 }
 
 // Get returns the content of the golden file for the given *testing.T instance
@@ -155,7 +208,7 @@ func File(t *testing.T) string {
 func Get(t *testing.T) []byte {
 	t.Helper()
 
-	return global.Get(t)
+	return globalGolden.Get(t)
 }
 
 // Set writes given data to the golden file for the given *testing.T instance as
@@ -164,7 +217,7 @@ func Get(t *testing.T) []byte {
 func Set(t *testing.T, data []byte) {
 	t.Helper()
 
-	global.Set(t, data)
+	globalGolden.Set(t, data)
 }
 
 // FileP returns the filename of the specifically named golden file for the
@@ -172,7 +225,7 @@ func Set(t *testing.T, data []byte) {
 func FileP(t *testing.T, name string) string {
 	t.Helper()
 
-	return global.FileP(t, name)
+	return globalGolden.FileP(t, name)
 }
 
 // GetP returns the content of the specifically named golden file belonging
@@ -184,7 +237,7 @@ func FileP(t *testing.T, name string) string {
 func GetP(t *testing.T, name string) []byte {
 	t.Helper()
 
-	return global.GetP(t, name)
+	return globalGolden.GetP(t, name)
 }
 
 // SetP writes given data of the specifically named golden file belonging to
@@ -196,7 +249,7 @@ func GetP(t *testing.T, name string) []byte {
 func SetP(t *testing.T, name string, data []byte) {
 	t.Helper()
 
-	global.SetP(t, name, data)
+	globalGolden.SetP(t, name, data)
 }
 
 // Update returns true when golden is set to update golden files. Should be used
@@ -206,7 +259,7 @@ func SetP(t *testing.T, name string, data []byte) {
 // environment variable is set to a truthy value. To customize create a custom
 // *Golden instance with New() and set a new UpdateFunc value.
 func Update() bool {
-	return global.Update()
+	return globalGolden.Update()
 }
 
 // Golden handles all interactions with golden files. The top-level package
