@@ -8,6 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jimeh/go-golden/marshal"
+	"github.com/jimeh/go-golden/unmarshal"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
 
@@ -15,29 +19,30 @@ import (
 // Helpers
 //
 
-type Author struct {
+type author struct {
 	FirstName string `json:"first_name" yaml:"first_name" xml:"first_name"`
 	LastName  string `json:"last_name" yaml:"last_name" xml:"last_name"`
 }
 
-type Book struct {
+type book struct {
 	ID     string  `json:"id" yaml:"id" xml:"id"`
 	Title  string  `json:"title" yaml:"title" xml:"title"`
-	Author *Author `json:"author,omitempty" yaml:"author,omitempty" xml:"author,omitempty"`
+	Author *author `json:"author,omitempty" yaml:"author,omitempty" xml:"author,omitempty"`
 	Year   int     `json:"year,omitempty" yaml:"year,omitempty" xml:"year,omitempty"`
 }
 
-type Article struct {
+type article struct {
 	ID     string     `json:"id" yaml:"id" xml:"id"`
 	Title  string     `json:"title" yaml:"title" xml:"title"`
-	Author *Author    `json:"author" yaml:"author" xml:"author"`
+	Author *author    `json:"author" yaml:"author" xml:"author"`
 	Date   *time.Time `json:"date,omitempty" yaml:"date,omitempty" xml:"date,omitempty"`
 
 	Rank  int `json:"-" yaml:"-" xml:"-"`
 	order int
 }
 
-type Comic struct {
+// comic is used for testing custom marshal/unmarshal functions on a type.
+type comic struct {
 	ID      string
 	Name    string
 	Issue   string
@@ -50,11 +55,11 @@ type xmlComic struct {
 	Issue string `xml:"issue,attr"`
 }
 
-func (s *Comic) MarshalJSON() ([]byte, error) {
+func (s *comic) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf(`{"%s":"%s=%s"}`, s.ID, s.Name, s.Issue)), nil
 }
 
-func (s *Comic) UnmarshalJSON(data []byte) error {
+func (s *comic) UnmarshalJSON(data []byte) error {
 	m := regexp.MustCompile(`^{\s*"(.*?)":\s*"(.*?)=(.*)"\s*}$`)
 	matches := m.FindSubmatch(bytes.TrimSpace(data))
 	if matches == nil {
@@ -68,11 +73,11 @@ func (s *Comic) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (s *Comic) MarshalYAML() (interface{}, error) {
+func (s *comic) MarshalYAML() (interface{}, error) {
 	return map[string]map[string]string{s.ID: {s.Name: s.Issue}}, nil
 }
 
-func (s *Comic) UnmarshalYAML(value *yaml.Node) error {
+func (s *comic) UnmarshalYAML(value *yaml.Node) error {
 	// Horribly hacky code, but it works and specifically only needs to extract
 	// these specific three values.
 	if len(value.Content) == 2 {
@@ -86,18 +91,18 @@ func (s *Comic) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-func (s *Comic) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+func (s *comic) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 	return e.EncodeElement(
 		&xmlComic{ID: s.ID, Name: s.Name, Issue: s.Issue},
 		start,
 	)
 }
 
-func (s *Comic) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+func (s *comic) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	x := &xmlComic{}
 	_ = d.DecodeElement(x, &start)
 
-	v := Comic{ID: x.ID, Name: x.Name, Issue: x.Issue}
+	v := comic{ID: x.ID, Name: x.Name, Issue: x.Issue}
 
 	*s = v
 
@@ -142,21 +147,21 @@ var marhalingTestCases = []struct {
 	},
 	{
 		name: "empty struct",
-		v:    &Book{},
+		v:    &book{},
 	},
 	{
 		name: "partial struct",
-		v: &Book{
+		v: &book{
 			ID:    "cfda163c-d5c1-44a2-909b-5d2ce3a31979",
 			Title: "The Traveler",
 		},
 	},
 	{
 		name: "full struct",
-		v: &Book{
+		v: &book{
 			ID:    "cfda163c-d5c1-44a2-909b-5d2ce3a31979",
 			Title: "The Traveler",
-			Author: &Author{
+			Author: &author{
 				FirstName: "John",
 				LastName:  "Twelve Hawks",
 			},
@@ -165,7 +170,7 @@ var marhalingTestCases = []struct {
 	},
 	{
 		name: "custom marshaling",
-		v: &Comic{
+		v: &comic{
 			ID:    "2fd5af35-b85e-4f03-8eba-524be28d7a5b",
 			Name:  "Hello World!",
 			Issue: "Forty Two",
@@ -204,26 +209,26 @@ var marshalingPTestCases = []struct {
 	},
 	{
 		name: "empty struct",
-		v:    &Article{},
-		want: &Article{},
+		v:    &article{},
+		want: &article{},
 	},
 	{
 		name: "partial struct",
-		v: &Book{
+		v: &book{
 			ID:    "10eec54d-e30a-4428-be18-01095d889126",
 			Title: "Time Travel",
 		},
-		want: &Book{
+		want: &book{
 			ID:    "10eec54d-e30a-4428-be18-01095d889126",
 			Title: "Time Travel",
 		},
 	},
 	{
 		name: "full struct",
-		v: &Article{
+		v: &article{
 			ID:    "10eec54d-e30a-4428-be18-01095d889126",
 			Title: "Time Travel",
-			Author: &Author{
+			Author: &author{
 				FirstName: "Doc",
 				LastName:  "Brown",
 			},
@@ -231,10 +236,10 @@ var marshalingPTestCases = []struct {
 			Rank:  8,
 			order: 16,
 		},
-		want: &Article{
+		want: &article{
 			ID:    "10eec54d-e30a-4428-be18-01095d889126",
 			Title: "Time Travel",
-			Author: &Author{
+			Author: &author{
 				FirstName: "Doc",
 				LastName:  "Brown",
 			},
@@ -243,13 +248,13 @@ var marshalingPTestCases = []struct {
 	},
 	{
 		name: "custom marshaling",
-		v: &Comic{
+		v: &comic{
 			ID:      "2fd5af35-b85e-4f03-8eba-524be28d7a5b",
 			Name:    "Hello World!",
 			Issue:   "Forty Two",
 			Ignored: "don't pay attention to this :)",
 		},
-		want: &Comic{
+		want: &comic{
 			ID:    "2fd5af35-b85e-4f03-8eba-524be28d7a5b",
 			Name:  "Hello World!",
 			Issue: "Forty Two",
@@ -260,6 +265,190 @@ var marshalingPTestCases = []struct {
 //
 // Tests
 //
+
+func TestWithGolden(t *testing.T) {
+	type args struct {
+		golden Golden
+	}
+	tests := []struct {
+		name string
+		args args
+	}{
+		{
+			name: "nil",
+			args: args{golden: nil},
+		},
+		{
+			name: "non-nil",
+			args: args{golden: New(WithSuffix(".my-custom-golden"))},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			original := New(WithSuffix(".original-golden"))
+			o := &asserterOptions{golden: original}
+
+			fn := WithGolden(tt.args.golden)
+			fn.apply(o)
+
+			if tt.args.golden == nil {
+				assert.Equal(t, original, o.golden)
+			} else {
+				assert.Equal(t, tt.args.golden, o.golden)
+			}
+		})
+	}
+}
+
+func TestNormalizedLineBreaks(t *testing.T) {
+	type args struct {
+		value bool
+	}
+	tests := []struct {
+		name string
+		args args
+	}{
+		{
+			name: "true",
+			args: args{value: true},
+		},
+		{
+			name: "false",
+			args: args{value: false},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := &asserterOptions{normalizeLineBreaks: !tt.args.value}
+
+			fn := WithNormalizedLineBreaks(tt.args.value)
+			fn.apply(o)
+
+			assert.Equal(t, tt.args.value, o.normalizeLineBreaks)
+		})
+	}
+}
+
+func TestNewAssert(t *testing.T) {
+	otherGolden := New(WithSuffix(".other-golden"))
+
+	type args struct {
+		options []AsserterOption
+	}
+
+	tests := []struct {
+		name string
+		args args
+		want *asserter
+	}{
+		{
+			name: "no options",
+			args: args{options: []AsserterOption{}},
+			want: &asserter{
+				json: NewMarshalingAsserter(
+					defaultGolden, "JSON",
+					marshal.JSON, unmarshal.JSON,
+					true,
+				),
+				xml: NewMarshalingAsserter(
+					defaultGolden, "XML",
+					marshal.XML, unmarshal.XML,
+					true,
+				),
+				yaml: NewMarshalingAsserter(
+					defaultGolden, "YAML",
+					marshal.YAML, unmarshal.YAML,
+					true,
+				),
+			},
+		},
+		{
+			name: "WithGlobal option",
+			args: args{
+				options: []AsserterOption{
+					WithGolden(otherGolden),
+				},
+			},
+			want: &asserter{
+				json: NewMarshalingAsserter(
+					otherGolden, "JSON",
+					marshal.JSON, unmarshal.JSON,
+					true,
+				),
+				xml: NewMarshalingAsserter(
+					otherGolden, "XML",
+					marshal.XML, unmarshal.XML,
+					true,
+				),
+				yaml: NewMarshalingAsserter(
+					otherGolden, "YAML",
+					marshal.YAML, unmarshal.YAML,
+					true,
+				),
+			},
+		},
+		{
+			name: "WithNormalizedLineBreaks option",
+			args: args{
+				options: []AsserterOption{
+					WithNormalizedLineBreaks(false),
+				},
+			},
+			want: &asserter{
+				json: NewMarshalingAsserter(
+					defaultGolden, "JSON",
+					marshal.JSON, unmarshal.JSON,
+					false,
+				),
+				xml: NewMarshalingAsserter(
+					defaultGolden, "XML",
+					marshal.XML, unmarshal.XML,
+					false,
+				),
+				yaml: NewMarshalingAsserter(
+					defaultGolden, "YAML",
+					marshal.YAML, unmarshal.YAML,
+					false,
+				),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := NewAsserter(tt.args.options...)
+			assert.Implements(t, (*Asserter)(nil), a)
+
+			got, ok := a.(*asserter)
+			require.True(
+				t, ok, "failed to type assert return value to a *asserter",
+			)
+
+			assert.Equal(t, tt.want.json.Golden, got.json.Golden)
+			assert.Equal(t, tt.want.json.Format, got.json.Format)
+			assert.Equal(t,
+				tt.want.json.NormalizeLineBreaks, got.json.NormalizeLineBreaks,
+			)
+
+			assert.Equal(t, tt.want.xml.Golden, got.xml.Golden)
+			assert.Equal(t, tt.want.xml.Format, got.xml.Format)
+			assert.Equal(t,
+				tt.want.xml.NormalizeLineBreaks, got.xml.NormalizeLineBreaks,
+			)
+
+			assert.Equal(t, tt.want.yaml.Golden, got.yaml.Golden)
+			assert.Equal(t, tt.want.yaml.Format, got.yaml.Format)
+			assert.Equal(t,
+				tt.want.yaml.NormalizeLineBreaks, got.yaml.NormalizeLineBreaks,
+			)
+		})
+	}
+}
+
+func Test_asserter(t *testing.T) {
+	a := &asserter{}
+
+	assert.Implements(t, (*Asserter)(nil), a)
+}
 
 func TestAssertJSONMarshaling(t *testing.T) {
 	for _, tt := range marhalingTestCases {
@@ -312,7 +501,7 @@ func TestAssertYAMLMarshalingP(t *testing.T) {
 func TestAssert_JSONMarshaling(t *testing.T) {
 	for _, tt := range marhalingTestCases {
 		t.Run(tt.name, func(t *testing.T) {
-			assert := NewAssert()
+			assert := NewAsserter()
 
 			assert.JSONMarshaling(t, tt.v)
 		})
@@ -322,7 +511,7 @@ func TestAssert_JSONMarshaling(t *testing.T) {
 func TestAssert_JSONMarshalingP(t *testing.T) {
 	for _, tt := range marshalingPTestCases {
 		t.Run(tt.name, func(t *testing.T) {
-			assert := NewAssert()
+			assert := NewAsserter()
 
 			assert.JSONMarshalingP(t, tt.v, tt.want)
 		})
@@ -332,7 +521,7 @@ func TestAssert_JSONMarshalingP(t *testing.T) {
 func TestAssert_XMLMarshaling(t *testing.T) {
 	for _, tt := range marhalingTestCases {
 		t.Run(tt.name, func(t *testing.T) {
-			assert := NewAssert()
+			assert := NewAsserter()
 
 			assert.XMLMarshaling(t, tt.v)
 		})
@@ -342,7 +531,7 @@ func TestAssert_XMLMarshaling(t *testing.T) {
 func TestAssert_XMLMarshalingP(t *testing.T) {
 	for _, tt := range marshalingPTestCases {
 		t.Run(tt.name, func(t *testing.T) {
-			assert := NewAssert()
+			assert := NewAsserter()
 
 			assert.XMLMarshalingP(t, tt.v, tt.want)
 		})
@@ -352,7 +541,7 @@ func TestAssert_XMLMarshalingP(t *testing.T) {
 func TestAssert_YAMLMarshaling(t *testing.T) {
 	for _, tt := range marhalingTestCases {
 		t.Run(tt.name, func(t *testing.T) {
-			assert := NewAssert()
+			assert := NewAsserter()
 
 			assert.YAMLMarshaling(t, tt.v)
 		})
@@ -362,7 +551,7 @@ func TestAssert_YAMLMarshaling(t *testing.T) {
 func TestAssert_YAMLMarshalingP(t *testing.T) {
 	for _, tt := range marshalingPTestCases {
 		t.Run(tt.name, func(t *testing.T) {
-			assert := NewAssert()
+			assert := NewAsserter()
 
 			assert.YAMLMarshalingP(t, tt.v, tt.want)
 		})

@@ -49,7 +49,7 @@ endef
 $(eval $(call tool,godoc,golang.org/x/tools/cmd/godoc))
 $(eval $(call tool,gofumpt,mvdan.cc/gofumpt))
 $(eval $(call tool,goimports,golang.org/x/tools/cmd/goimports))
-$(eval $(call tool,golangci-lint,github.com/golangci/golangci-lint/cmd/golangci-lint@v1.42))
+$(eval $(call tool,golangci-lint,github.com/golangci/golangci-lint/cmd/golangci-lint@v1.43))
 $(eval $(call tool,gomod,github.com/Helcaraxan/gomod))
 
 .PHONY: tools

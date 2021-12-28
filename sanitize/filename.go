@@ -1,4 +1,4 @@
-package golden
+package sanitize
 
 import (
 	"regexp"
@@ -15,7 +15,7 @@ var (
 	)
 )
 
-func sanitizeFilename(name string) string {
+func Filename(name string) string {
 	if reservedNames.MatchString(name) || winReserved.MatchString(name) {
 		var b []byte
 		for i := 0; i < len(name); i++ {
