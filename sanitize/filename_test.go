@@ -1,12 +1,13 @@
-package golden
+package sanitize_test
 
 import (
 	"testing"
 
+	"github.com/jimeh/go-golden/sanitize"
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_sanitizeFilename(t *testing.T) {
+func TestFilename(t *testing.T) {
 	tests := []struct {
 		name     string
 		filename string
@@ -69,6 +70,7 @@ func Test_sanitizeFilename(t *testing.T) {
 			filename: "foobar.golden  ..  ..  ..  ",
 			want:     "foobar.golden",
 		},
+		// Protected Windows filenames.
 		{name: "con", filename: "con", want: "___"},
 		{name: "prn", filename: "prn", want: "___"},
 		{name: "aux", filename: "aux", want: "___"},
@@ -116,7 +118,7 @@ func Test_sanitizeFilename(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := sanitizeFilename(tt.filename)
+			got := sanitize.Filename(tt.filename)
 
 			assert.Equal(t, tt.want, got)
 		})
