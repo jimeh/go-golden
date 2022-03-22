@@ -1,6 +1,9 @@
 package golden
 
-import "os"
+import (
+	"os"
+	"strings"
+)
 
 var truthyStrings = []string{"1", "y", "t", "yes", "on", "true"}
 
@@ -14,7 +17,7 @@ type UpdateFunc func() bool
 func EnvUpdateFunc() bool {
 	env := os.Getenv("GOLDEN_UPDATE")
 	for _, v := range truthyStrings {
-		if env == v {
+		if strings.ToLower(env) == v {
 			return true
 		}
 	}

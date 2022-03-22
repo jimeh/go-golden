@@ -70,4 +70,4 @@ for documentation and examples.
 
 ## License
 
-[MIT](https://github.com/jimeh/go-golden/blob/master/LICENSE)
+[MIT](https://github.com/jimeh/go-golden/blob/main/LICENSE)
