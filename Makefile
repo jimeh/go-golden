@@ -51,6 +51,7 @@ $(eval $(call tool,gofumpt,mvdan.cc/gofumpt))
 $(eval $(call tool,goimports,golang.org/x/tools/cmd/goimports))
 $(eval $(call tool,golangci-lint,github.com/golangci/golangci-lint/cmd/golangci-lint@v1.44))
 $(eval $(call tool,gomod,github.com/Helcaraxan/gomod))
+$(eval $(call tool,mockgen,mockgen,github.com/golang/mock/mockgen@v1.6.0))
 
 .PHONY: tools
 tools: $(TOOLS)

@@ -1,6 +1,7 @@
 package golden
 
 import (
+	"io/fs"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/golang/mock/gomock"
 	"github.com/jimeh/envctl"
 	"github.com/jimeh/go-mocktesting"
 	"github.com/spf13/afero"
@@ -19,113 +21,68 @@ func stringPtr(s string) *string {
 	return &s
 }
 
+func funcID(f interface{}) string {
+	return runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()
+}
+
+func setupDefaultMock(
+	t *testing.T,
+	ctrl *gomock.Controller,
+) (*MockTestingT, *MockGolden) {
+	t.Helper()
+
+	mt := NewMockTestingT(ctrl)
+	mg := NewMockGolden(ctrl)
+
+	originalDefault := Default
+	Default = mg
+	t.Cleanup(func() {
+		Default = originalDefault
+	})
+
+	return mt, mg
+}
+
+func TestDefault(t *testing.T) {
+	require.IsType(t, &golden{}, Default)
+
+	dg := Default.(*golden)
+
+	assert.Equal(t, fs.FileMode(0o755), dg.dirMode)
+	assert.Equal(t, fs.FileMode(0o644), dg.fileMode)
+	assert.Equal(t, ".golden", dg.suffix)
+	assert.Equal(t, "testdata", dg.dirname)
+	assert.Equal(t, funcID(EnvUpdateFunc), funcID(dg.updateFunc))
+	assert.Equal(t, afero.NewOsFs(), dg.fs)
+	assert.Equal(t, true, dg.logOnWrite)
+}
+
 func TestFile(t *testing.T) {
-	got := File(t)
+	ctrl := gomock.NewController(t)
+	mt, mg := setupDefaultMock(t, ctrl)
 
-	assert.Equal(t, filepath.Join("testdata", "TestFile.golden"), got)
+	want := filepath.Join("testdata", t.Name()+".golden")
 
-	tests := []struct {
-		name string
-		want string
-	}{
-		{
-			name: "",
-			want: filepath.Join("testdata", "TestFile", "#00.golden"),
-		},
-		{
-			name: "foobar",
-			want: filepath.Join("testdata", "TestFile", "foobar.golden"),
-		},
-		{
-			name: "foo/bar",
-			want: filepath.Join("testdata", "TestFile", "foo", "bar.golden"),
-		},
-		{
-			name: `"foobar"`,
-			want: filepath.Join("testdata", "TestFile", "_foobar_.golden"),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := File(t)
+	mt.EXPECT().Helper()
+	mg.EXPECT().File(mt).Return(want)
 
-			assert.Equal(t, tt.want, got)
-		})
-	}
+	got := File(mt)
+
+	assert.Equal(t, want, got)
 }
 
 func TestGet(t *testing.T) {
-	t.Cleanup(func() {
-		err := os.RemoveAll(filepath.Join("testdata", "TestGet"))
-		require.NoError(t, err)
-		err = os.Remove(filepath.Join("testdata", "TestGet.golden"))
-		require.NoError(t, err)
-	})
+	ctrl := gomock.NewController(t)
+	mt, mg := setupDefaultMock(t, ctrl)
 
-	err := os.MkdirAll("testdata", 0o755)
-	require.NoError(t, err)
+	want := []byte("foobar\nhello world :)")
 
-	content := []byte("foobar\nhello world :)")
-	err = ioutil.WriteFile( //nolint:gosec
-		filepath.Join("testdata", "TestGet.golden"), content, 0o644,
-	)
-	require.NoError(t, err)
+	mt.EXPECT().Helper()
+	mg.EXPECT().Get(mt).Return(want)
 
-	got := Get(t)
-	assert.Equal(t, content, got)
+	got := Get(mt)
 
-	tests := []struct {
-		name string
-		file string
-		want []byte
-	}{
-		{
-			name: "",
-			file: filepath.Join("testdata", "TestGet", "#00.golden"),
-			want: []byte("number double-zero here"),
-		},
-		{
-			name: "foobar",
-			file: filepath.Join("testdata", "TestGet", "foobar.golden"),
-			want: []byte("foobar here"),
-		},
-		{
-			name: "foo/bar",
-			file: filepath.Join("testdata", "TestGet", "foo", "bar.golden"),
-			want: []byte("foo/bar style sub-sub-folders works too"),
-		},
-		{
-			name: "john's lost flip-flop",
-			file: filepath.Join(
-				"testdata", "TestGet", "john's_lost_flip-flop.golden",
-			),
-			want: []byte("Did John lose his flip-flop again?"),
-		},
-		{
-			name: "thing: it's a thing!",
-			file: filepath.Join(
-				"testdata", "TestGet", "thing__it's_a_thing!.golden",
-			),
-			want: []byte("A thing? Really? Are we getting lazy? :P"),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			f := File(t)
-			dir := filepath.Dir(f)
-
-			err := os.MkdirAll(dir, 0o755)
-			require.NoError(t, err)
-
-			err = ioutil.WriteFile(f, tt.want, 0o644) //nolint:gosec
-			require.NoError(t, err)
-
-			got := Get(t)
-
-			assert.Equal(t, tt.file, f)
-			assert.Equal(t, tt.want, got)
-		})
-	}
+	assert.Equal(t, want, got)
 }
 
 func TestSet(t *testing.T) {
@@ -196,54 +153,17 @@ func TestSet(t *testing.T) {
 }
 
 func TestFileP(t *testing.T) {
-	got := FileP(t, "sub-name")
-	assert.Equal(t,
-		filepath.Join("testdata", "TestFileP", "sub-name.golden"), got,
-	)
+	ctrl := gomock.NewController(t)
+	mt, mg := setupDefaultMock(t, ctrl)
 
-	tests := []struct {
-		name  string
-		named string
-		want  string
-	}{
-		{
-			name:  "",
-			named: "sub-thing",
-			want: filepath.Join(
-				"testdata", "TestFileP", "#00", "sub-thing.golden",
-			),
-		},
-		{
-			name:  "fozbaz",
-			named: "email",
-			want: filepath.Join(
-				"testdata", "TestFileP", "fozbaz", "email.golden",
-			),
-		},
-		{
-			name:  "fozbaz",
-			named: "json",
-			want: filepath.Join(
-				"testdata", "TestFileP", "fozbaz#01", "json.golden",
-			),
-		},
-		{
-			name:  "foo/bar",
-			named: "hello/world",
-			want: filepath.Join(
-				"testdata", "TestFileP",
-				"foo", "bar",
-				"hello", "world.golden",
-			),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := FileP(t, tt.named)
+	want := filepath.Join("testdata", t.Name(), "foobar.golden")
 
-			assert.Equal(t, tt.want, got)
-		})
-	}
+	mt.EXPECT().Helper()
+	mg.EXPECT().FileP(mt, "foobar").Return(want)
+
+	got := FileP(mt, "foobar")
+
+	assert.Equal(t, want, got)
 }
 
 func TestGetP(t *testing.T) {
@@ -506,19 +426,12 @@ func TestNew(t *testing.T) {
 			got, ok := g.(*golden)
 			require.True(t, ok, "New did not returns a *golden instance")
 
-			gotUpdateFunc := runtime.FuncForPC(
-				reflect.ValueOf(got.updateFunc).Pointer(),
-			).Name()
-			wantUpdateFunc := runtime.FuncForPC(
-				reflect.ValueOf(tt.want.updateFunc).Pointer(),
-			).Name()
-
 			assert.Equal(t, tt.want.dirMode, got.dirMode)
 			assert.Equal(t, tt.want.fileMode, got.fileMode)
 			assert.Equal(t, tt.want.suffix, got.suffix)
 			assert.Equal(t, tt.want.dirname, got.dirname)
 			assert.Equal(t, tt.want.logOnWrite, got.logOnWrite)
-			assert.Equal(t, wantUpdateFunc, gotUpdateFunc)
+			assert.Equal(t, funcID(tt.want.updateFunc), funcID(got.updateFunc))
 			assert.IsType(t, tt.want.fs, got.fs)
 		})
 	}

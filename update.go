@@ -1,6 +1,7 @@
 package golden
 
 import (
+	"flag"
 	"os"
 	"strings"
 )
@@ -21,6 +22,25 @@ func EnvUpdateFunc() bool {
 			return true
 		}
 	}
+
+	return false
+}
+
+var (
+	updateFlagSet *flag.FlagSet
+	updateFlag    bool
+)
+
+// UpdateFunc returns a function that checks a -update flag is set.
+func FlagUpdateFunc() bool {
+	if updateFlagSet == nil {
+		updateFlagSet = flag.NewFlagSet("golden", flag.ContinueOnError)
+		updateFlagSet.BoolVar(&updateFlag,
+			"update", false, "update golden files",
+		)
+	}
+
+	_ = updateFlagSet.Parse(os.Args[1:])
 
 	return false
 }

@@ -3,6 +3,7 @@ module github.com/jimeh/go-golden
 go 1.15
 
 require (
+	github.com/golang/mock v1.6.0
 	github.com/jimeh/envctl v0.1.0
 	github.com/jimeh/go-mocktesting v0.1.0
 	github.com/spf13/afero v1.6.0
