@@ -1,361 +1,921 @@
 package golden
 
 import (
+	"fmt"
 	"io/fs"
-	"io/ioutil"
-	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"sync"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/jimeh/envctl"
-	"github.com/jimeh/go-mocktesting"
-	"github.com/spf13/afero"
+	"github.com/jimeh/go-golden/test/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func stringPtr(s string) *string {
-	return &s
-}
+//
+// Test Helpers
+//
 
 func funcID(f interface{}) string {
 	return runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()
 }
 
-func setupDefaultMock(
-	t *testing.T,
-	ctrl *gomock.Controller,
-) (*MockTestingT, *MockGolden) {
-	t.Helper()
+func prepareDefaultGoldenForTests(t *testing.T) *testfs.FS {
+	realDefault := DefaultGolden
+	t.Cleanup(func() { DefaultGolden = realDefault })
 
-	mt := NewMockTestingT(ctrl)
-	mg := NewMockGolden(ctrl)
+	fs := testfs.New()
+	DefaultGolden = New(WithFS(fs))
 
-	originalDefault := Default
-	Default = mg
-	t.Cleanup(func() {
-		Default = originalDefault
-	})
-
-	return mt, mg
+	return fs
 }
 
-func TestDefault(t *testing.T) {
-	require.IsType(t, &golden{}, Default)
+func testInGoroutine(t *testing.T, f func()) {
+	t.Helper()
 
-	dg := Default.(*golden)
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		f()
+	}()
+	wg.Wait()
+}
+
+//
+// Tests
+//
+
+func TestDefault(t *testing.T) {
+	require.IsType(t, &gold{}, DefaultGolden)
+
+	dg := DefaultGolden.(*gold)
 
 	assert.Equal(t, fs.FileMode(0o755), dg.dirMode)
 	assert.Equal(t, fs.FileMode(0o644), dg.fileMode)
 	assert.Equal(t, ".golden", dg.suffix)
 	assert.Equal(t, "testdata", dg.dirname)
 	assert.Equal(t, funcID(EnvUpdateFunc), funcID(dg.updateFunc))
-	assert.Equal(t, afero.NewOsFs(), dg.fs)
+	assert.Equal(t, NewFS(), dg.fs)
 	assert.Equal(t, true, dg.logOnWrite)
 }
 
-func TestFile(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mt, mg := setupDefaultMock(t, ctrl)
-
-	want := filepath.Join("testdata", t.Name()+".golden")
-
-	mt.EXPECT().Helper()
-	mg.EXPECT().File(mt).Return(want)
-
-	got := File(mt)
-
-	assert.Equal(t, want, got)
-}
-
-func TestGet(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mt, mg := setupDefaultMock(t, ctrl)
-
-	want := []byte("foobar\nhello world :)")
-
-	mt.EXPECT().Helper()
-	mg.EXPECT().Get(mt).Return(want)
-
-	got := Get(mt)
-
-	assert.Equal(t, want, got)
-}
-
-func TestSet(t *testing.T) {
-	t.Cleanup(func() {
-		t.Log("cleaning up golden files")
-		err := os.RemoveAll(filepath.Join("testdata", "TestSet"))
-		require.NoError(t, err)
-		err = os.Remove(filepath.Join("testdata", "TestSet.golden"))
-		require.NoError(t, err)
-	})
-
-	content := []byte("This is the default golden file for TestSet ^_^")
-	Set(t, content)
-
-	b, err := ioutil.ReadFile(filepath.Join("testdata", "TestSet.golden"))
-	require.NoError(t, err)
-
-	assert.Equal(t, content, b)
-
+func TestDo(t *testing.T) {
 	tests := []struct {
-		name    string
-		file    string
-		content []byte
+		name               string
+		testName           string
+		content            []byte
+		existing           []byte
+		wantFilepath       string
+		wantNoUpdateLogs   []string
+		wantNoUpdateFatals []string
+		wantUpdateLogs     []string
+		wantUpdateFatals   []string
 	}{
 		{
-			name:    "",
-			file:    filepath.Join("testdata", "TestSet", "#00.golden"),
-			content: []byte("number double-zero strikes again"),
+			name:     "empty test name",
+			testName: "",
+			wantUpdateFatals: []string{
+				"golden: could not determine filename for TestingT instance",
+			},
+			wantNoUpdateFatals: []string{
+				"golden: could not determine filename for TestingT instance",
+			},
 		},
 		{
-			name:    "foobar",
-			file:    filepath.Join("testdata", "TestSet", "foobar.golden"),
-			content: []byte("foobar here"),
+			name:         "without slashes",
+			testName:     "TestFoo",
+			content:      []byte("new content"),
+			existing:     []byte("old content"),
+			wantFilepath: filepath.Join("testdata", "TestFoo.golden"),
+			wantUpdateLogs: []string{
+				fmt.Sprintf(
+					"golden: writing golden file: %s",
+					filepath.Join("testdata", "TestFoo.golden"),
+				),
+			},
 		},
 		{
-			name:    "foo/bar",
-			file:    filepath.Join("testdata", "TestSet", "foo", "bar.golden"),
-			content: []byte("foo/bar style sub-sub-folders works too"),
+			name:         "with slashes",
+			testName:     "TestFoo/bar",
+			content:      []byte("new stuff with slashes"),
+			existing:     []byte("old stuff"),
+			wantFilepath: filepath.Join("testdata", "TestFoo", "bar.golden"),
+			wantUpdateLogs: []string{
+				fmt.Sprintf(
+					"golden: writing golden file: %s",
+					filepath.Join("testdata", "TestFoo", "bar.golden"),
+				),
+			},
 		},
 		{
-			name: "john's lost flip-flop",
-			file: filepath.Join(
-				"testdata", "TestSet", "john's_lost_flip-flop.golden",
+			name:     "with spaces and special characters",
+			testName: `TestFoo/John's "lost" flip-flop?<>:*|"`,
+			content:  []byte("Did John lose his flip-flop again?"),
+			existing: []byte("Where is the flip-flop?"),
+			wantFilepath: filepath.Join(
+				"testdata", "TestFoo", "John's__lost__flip-flop_______.golden",
 			),
-			content: []byte("Did John lose his flip-flop again?"),
+			wantUpdateLogs: []string{
+				fmt.Sprintf(
+					"golden: writing golden file: %s",
+					filepath.Join(
+						"testdata", "TestFoo",
+						"John's__lost__flip-flop_______.golden",
+					),
+				),
+			},
 		},
 		{
-			name: "thing: it's a thing!",
-			file: filepath.Join(
-				"testdata", "TestSet", "thing__it's_a_thing!.golden",
+			name:         "does not exist",
+			testName:     "TestFoo/nope",
+			content:      []byte("new stuff with slashes"),
+			existing:     nil,
+			wantFilepath: filepath.Join("testdata", "TestFoo", "nope.golden"),
+			wantUpdateLogs: []string{
+				fmt.Sprintf(
+					"golden: writing golden file: %s",
+					filepath.Join("testdata", "TestFoo", "nope.golden"),
+				),
+			},
+			wantNoUpdateFatals: []string{
+				fmt.Sprintf(
+					"golden: open %s: no such file or directory",
+					filepath.Join(
+						"/root", "testdata", "TestFoo", "nope.golden",
+					),
+				),
+			},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name+"/no update", func(t *testing.T) {
+			require.False(t, Update())
+
+			fs := prepareDefaultGoldenForTests(t)
+			ft := &fakeTestingT{name: tt.testName}
+
+			if tt.existing != nil {
+				err := fs.MkdirAll(filepath.Dir(tt.wantFilepath), 0o755)
+				require.NoError(t, err)
+
+				err = fs.WriteFile(tt.wantFilepath, tt.existing, 0o600)
+				require.NoError(t, err)
+			}
+
+			var got []byte
+			testInGoroutine(t, func() {
+				got = Do(ft, tt.content)
+			})
+
+			if tt.existing == nil {
+				assert.Equal(t, tt.existing, got)
+			} else {
+				assert.GreaterOrEqual(t, 1, len(ft.fatals))
+			}
+
+			assert.Equal(t, tt.wantNoUpdateFatals, ft.fatals)
+			assert.Equal(t, tt.wantNoUpdateLogs, ft.logs)
+		})
+		t.Run(tt.name+"/update", func(t *testing.T) {
+			envctl.WithClean(map[string]string{"GOLDEN_UPDATE": "1"}, func() {
+				require.True(t, Update())
+
+				fs := prepareDefaultGoldenForTests(t)
+				ft := &fakeTestingT{name: tt.testName}
+
+				if tt.existing != nil {
+					err := fs.MkdirAll(filepath.Dir(tt.wantFilepath), 0o755)
+					require.NoError(t, err)
+
+					err = fs.WriteFile(tt.wantFilepath, tt.existing, 0o600)
+					require.NoError(t, err)
+				}
+
+				var got []byte
+				testInGoroutine(t, func() {
+					got = Do(ft, tt.content)
+				})
+
+				assert.Equal(t, tt.content, got)
+				assert.Equal(t, tt.wantUpdateFatals, ft.fatals)
+				assert.Equal(t, tt.wantUpdateLogs, ft.logs)
+			})
+		})
+	}
+}
+
+func TestDoP(t *testing.T) {
+	tests := []struct {
+		name               string
+		testName           string
+		goldenName         string
+		content            []byte
+		existing           []byte
+		wantFilepath       string
+		wantNoUpdateLogs   []string
+		wantNoUpdateFatals []string
+		wantUpdateLogs     []string
+		wantUpdateFatals   []string
+	}{
+		{
+			name:       "empty test name",
+			testName:   "",
+			goldenName: "junk",
+			wantUpdateFatals: []string{
+				"golden: could not determine filename for TestingT instance",
+			},
+			wantNoUpdateFatals: []string{
+				"golden: could not determine filename for TestingT instance",
+			},
+		},
+		{
+			name:       "empty golden name",
+			testName:   "TestBar",
+			goldenName: "",
+			wantUpdateFatals: []string{
+				"golden: name cannot be empty",
+			},
+			wantNoUpdateFatals: []string{
+				"golden: name cannot be empty",
+			},
+		},
+		{
+			name:         "without slashes",
+			testName:     "TestBar",
+			goldenName:   "foo",
+			content:      []byte("new content"),
+			existing:     []byte("old content"),
+			wantFilepath: filepath.Join("testdata", "TestBar", "foo.golden"),
+			wantUpdateLogs: []string{
+				fmt.Sprintf(
+					"golden: writing golden file: %s",
+					filepath.Join("testdata", "TestBar", "foo.golden"),
+				),
+			},
+		},
+		{
+			name:       "with slashes in test name",
+			testName:   "TestBar/foo",
+			goldenName: "junk",
+			content:    []byte("new stuff with slashes"),
+			existing:   []byte("old stuff"),
+			wantFilepath: filepath.Join(
+				"testdata", "TestBar", "foo", "junk.golden",
 			),
-			content: []byte("A thing? Really? Are we getting lazy? :P"),
+			wantUpdateLogs: []string{
+				fmt.Sprintf(
+					"golden: writing golden file: %s",
+					filepath.Join("testdata", "TestBar", "foo", "junk.golden"),
+				),
+			},
+		},
+		{
+			name:       "with slashes in golden name",
+			testName:   "TestBar",
+			goldenName: "foo/junk",
+			content:    []byte("new stuff with slashes"),
+			existing:   []byte("old stuff"),
+			wantFilepath: filepath.Join(
+				"testdata", "TestBar", "foo", "junk.golden",
+			),
+			wantUpdateLogs: []string{
+				fmt.Sprintf(
+					"golden: writing golden file: %s",
+					filepath.Join("testdata", "TestBar", "foo", "junk.golden"),
+				),
+			},
+		},
+		{
+			name:       "with spaces and special characters",
+			testName:   `TestBar/John's "lost" flip-flop?<>:*|"`,
+			goldenName: "junk/*plastic*",
+			content:    []byte("Did John lose his flip-flop again?"),
+			existing:   []byte("Where is the flip-flop?"),
+			wantFilepath: filepath.Join(
+				"testdata", "TestBar", "John's__lost__flip-flop_______",
+				"junk", "_plastic_.golden",
+			),
+			wantUpdateLogs: []string{
+				fmt.Sprintf(
+					"golden: writing golden file: %s",
+					filepath.Join(
+						"testdata", "TestBar", "John's__lost__flip-flop_______",
+						"junk", "_plastic_.golden",
+					),
+				),
+			},
+		},
+		{
+			name:         "does not exist",
+			testName:     "TestBar",
+			goldenName:   "junk",
+			content:      []byte("new stuff with slashes"),
+			existing:     nil,
+			wantFilepath: filepath.Join("testdata", "TestBar", "junk.golden"),
+			wantUpdateLogs: []string{
+				fmt.Sprintf(
+					"golden: writing golden file: %s",
+					filepath.Join("testdata", "TestBar", "junk.golden"),
+				),
+			},
+			wantNoUpdateFatals: []string{
+				fmt.Sprintf(
+					"golden: open %s: no such file or directory",
+					filepath.Join(
+						"/root", "testdata", "TestBar", "junk.golden",
+					),
+				),
+			},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name+"/no update", func(t *testing.T) {
+			require.False(t, Update())
+
+			fs := prepareDefaultGoldenForTests(t)
+			ft := &fakeTestingT{name: tt.testName}
+
+			if tt.existing != nil {
+				err := fs.MkdirAll(filepath.Dir(tt.wantFilepath), 0o755)
+				require.NoError(t, err)
+
+				err = fs.WriteFile(tt.wantFilepath, tt.existing, 0o600)
+				require.NoError(t, err)
+			}
+
+			var got []byte
+			testInGoroutine(t, func() {
+				got = DoP(ft, tt.goldenName, tt.content)
+			})
+
+			if tt.existing == nil {
+				assert.Equal(t, tt.existing, got)
+			} else {
+				assert.GreaterOrEqual(t, 1, len(ft.fatals))
+			}
+
+			assert.Equal(t, tt.wantNoUpdateFatals, ft.fatals)
+			assert.Equal(t, tt.wantNoUpdateLogs, ft.logs)
+		})
+		t.Run(tt.name+"/update", func(t *testing.T) {
+			envctl.WithClean(map[string]string{"GOLDEN_UPDATE": "1"}, func() {
+				require.True(t, Update())
+
+				fs := prepareDefaultGoldenForTests(t)
+				ft := &fakeTestingT{name: tt.testName}
+
+				if tt.existing != nil {
+					err := fs.MkdirAll(filepath.Dir(tt.wantFilepath), 0o755)
+					require.NoError(t, err)
+
+					err = fs.WriteFile(tt.wantFilepath, tt.existing, 0o600)
+					require.NoError(t, err)
+				}
+
+				var got []byte
+				testInGoroutine(t, func() {
+					got = DoP(ft, tt.goldenName, tt.content)
+				})
+
+				assert.Equal(t, tt.content, got)
+				assert.Equal(t, tt.wantUpdateFatals, ft.fatals)
+				assert.Equal(t, tt.wantUpdateLogs, ft.logs)
+			})
+		})
+	}
+}
+
+func TestFile(t *testing.T) {
+	tests := []struct {
+		name       string
+		testName   string
+		want       string
+		wantFatals []string
+	}{
+		{
+			name:     "empty test name",
+			testName: "",
+			wantFatals: []string{
+				"golden: could not determine filename for TestingT instance",
+			},
+		},
+		{
+			name:     "without slashes",
+			testName: "TestFoo",
+			want:     filepath.Join("testdata", "TestFoo.golden"),
+		},
+		{
+			name:     "with slashes",
+			testName: "TestFoo/bar",
+			want:     filepath.Join("testdata", "TestFoo", "bar.golden"),
+		},
+		{
+			name:     "with slashes and special characters",
+			testName: `TestFoo/John's "lost" flip-flop?<>:*|"`,
+			want: filepath.Join(
+				"testdata", "TestFoo", "John's__lost__flip-flop_______.golden",
+			),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := File(t)
+			ft := &fakeTestingT{name: tt.testName}
 
-			Set(t, tt.content)
+			var got string
+			testInGoroutine(t, func() {
+				got = File(ft)
+			})
 
-			got, err := ioutil.ReadFile(f)
-			require.NoError(t, err)
-
-			assert.Equal(t, tt.file, f)
-			assert.Equal(t, tt.content, got)
+			assert.Equal(t, tt.want, got)
+			assert.Equal(t, tt.wantFatals, ft.fatals)
 		})
 	}
 }
 
 func TestFileP(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mt, mg := setupDefaultMock(t, ctrl)
-
-	want := filepath.Join("testdata", t.Name(), "foobar.golden")
-
-	mt.EXPECT().Helper()
-	mg.EXPECT().FileP(mt, "foobar").Return(want)
-
-	got := FileP(mt, "foobar")
-
-	assert.Equal(t, want, got)
-}
-
-func TestGetP(t *testing.T) {
-	t.Cleanup(func() {
-		err := os.RemoveAll(filepath.Join("testdata", "TestGetP"))
-		require.NoError(t, err)
-	})
-
-	err := os.MkdirAll(filepath.Join("testdata", "TestGetP"), 0o755)
-	require.NoError(t, err)
-
-	content := []byte("this is the named golden file for TestGetP")
-	err = ioutil.WriteFile( //nolint:gosec
-		filepath.Join("testdata", "TestGetP", "sub-name.golden"),
-		content, 0o644,
-	)
-	require.NoError(t, err)
-
-	got := GetP(t, "sub-name")
-	assert.Equal(t, content, got)
-
 	tests := []struct {
-		name  string
-		named string
-		file  string
-		want  []byte
+		name       string
+		testName   string
+		goldenName string
+		want       string
+		wantFatals []string
 	}{
 		{
-			name:  "",
-			named: "sub-zero-one",
-			file: filepath.Join(
-				"testdata", "TestGetP", "#00", "sub-zero-one.golden",
-			),
-			want: []byte("number zero-one here"),
+			name:       "empty test name",
+			testName:   "",
+			goldenName: "junk",
+			wantFatals: []string{
+				"golden: could not determine filename for TestingT instance",
+			},
 		},
 		{
-			name:  "foobar",
-			named: "email",
-			file: filepath.Join(
-				"testdata", "TestGetP", "foobar", "email.golden",
-			),
-			want: []byte("foobar email here"),
+			name:       "empty golden name",
+			testName:   "TestFoo",
+			goldenName: "",
+			wantFatals: []string{
+				"golden: name cannot be empty",
+			},
 		},
 		{
-			name:  "foobar",
-			named: "json",
-			file: filepath.Join(
-				"testdata", "TestGetP", "foobar#01", "json.golden",
-			),
-			want: []byte("foobar json here"),
+			name:       "without slashes",
+			testName:   "TestFoo",
+			goldenName: "bar",
+			want:       filepath.Join("testdata", "TestFoo", "bar.golden"),
 		},
 		{
-			name:  "foo/bar",
-			named: "hello/world",
-			file: filepath.Join(
-				"testdata", "TestGetP",
-				"foo", "bar",
-				"hello", "world.golden",
+			name:       "slashes in test name",
+			testName:   "TestFoo/bar",
+			goldenName: "junk",
+			want: filepath.Join(
+				"testdata", "TestFoo", "bar", "junk.golden",
 			),
-			want: []byte("foo/bar style sub-sub-folders works too"),
 		},
 		{
-			name:  "john's lost flip-flop",
-			named: "left",
-			file: filepath.Join(
-				"testdata", "TestGetP", "john's_lost_flip-flop",
-				"left.golden",
+			name:       "slashes in golden name",
+			testName:   "TestFoo",
+			goldenName: "bar/junk",
+			want: filepath.Join(
+				"testdata", "TestFoo", "bar", "junk.golden",
 			),
-			want: []byte("Did John lose his left flip-flop again?"),
 		},
 		{
-			name:  "john's lost flip-flop",
-			named: "right",
-			file: filepath.Join(
-				"testdata", "TestGetP", "john's_lost_flip-flop#01",
-				"right.golden",
+			name:       "slashes in test and golden name",
+			testName:   "TestFoo/bar",
+			goldenName: "junk/plastic",
+			want: filepath.Join(
+				"testdata", "TestFoo", "bar", "junk", "plastic.golden",
 			),
-			want: []byte("Did John lose his right flip-flop again?"),
 		},
 		{
-			name:  "thing: it's",
-			named: "a thing!",
-			file: filepath.Join(
-				"testdata", "TestGetP", "thing__it's", "a_thing!.golden",
+			name:       "slashes and special characters",
+			testName:   `TestFoo/John's "lost" flip-flop?<>:*|"`,
+			goldenName: "junk/*plastic*",
+			want: filepath.Join(
+				"testdata", "TestFoo", "John's__lost__flip-flop_______",
+				"junk", "_plastic_.golden",
 			),
-			want: []byte("A thing? Really? Are we getting lazy? :P"),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := FileP(t, tt.named)
-			dir := filepath.Dir(f)
+			ft := &fakeTestingT{name: tt.testName}
 
-			err := os.MkdirAll(dir, 0o755)
-			require.NoError(t, err)
+			var got string
+			testInGoroutine(t, func() {
+				got = FileP(ft, tt.goldenName)
+			})
 
-			err = ioutil.WriteFile(f, tt.want, 0o644) //nolint:gosec
-			require.NoError(t, err)
-
-			got := GetP(t, tt.named)
-
-			assert.Equal(t, filepath.FromSlash(tt.file), f)
 			assert.Equal(t, tt.want, got)
+			assert.Equal(t, tt.wantFatals, ft.fatals)
+		})
+	}
+}
+
+func TestGet(t *testing.T) {
+	tests := []struct {
+		name       string
+		testName   string
+		files      map[string][]byte
+		want       []byte
+		wantFatals []string
+	}{
+		{
+			name:     "empty test name",
+			testName: "",
+			wantFatals: []string{
+				"golden: could not determine filename for TestingT instance",
+			},
+		},
+		{
+			name:     "without slashes",
+			testName: "TestFoo",
+			files: map[string][]byte{
+				filepath.Join("testdata", "TestFoo.golden"): []byte("bar\n"),
+			},
+			want: []byte("bar\n"),
+		},
+		{
+			name:     "with slashes",
+			testName: "TestFoo/bar",
+			files: map[string][]byte{
+				filepath.Join("testdata", "TestFoo", "bar.golden"): []byte(
+					"bar\n",
+				),
+			},
+			want: []byte("bar\n"),
+		},
+		{
+			name:     "with slashes and special characters",
+			testName: `TestFoo/John's "lost" flip-flop?<>:*|"`,
+			files: map[string][]byte{
+				filepath.Join(
+					"testdata", "TestFoo",
+					"John's__lost__flip-flop_______.golden",
+				): []byte("bar nope\n"),
+			},
+			want: []byte("bar nope\n"),
+		},
+		{
+			name:     "file does not exist",
+			testName: "TestFoo",
+			files:    map[string][]byte{},
+			wantFatals: []string{
+				fmt.Sprintf(
+					"golden: open %s: no such file or directory",
+					filepath.Join("/root", "testdata", "TestFoo.golden"),
+				),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := prepareDefaultGoldenForTests(t)
+			ft := &fakeTestingT{name: tt.testName}
+
+			for file, content := range tt.files {
+				err := fs.MkdirAll(filepath.Dir(file), 0o755)
+				require.NoError(t, err)
+
+				err = fs.WriteFile(file, content, 0o600)
+				require.NoError(t, err)
+			}
+
+			var got []byte
+			testInGoroutine(t, func() {
+				got = Get(ft)
+			})
+
+			assert.Equal(t, tt.want, got)
+			assert.Equal(t, tt.wantFatals, ft.fatals)
+		})
+	}
+}
+
+func TestGetP(t *testing.T) {
+	tests := []struct {
+		name       string
+		testName   string
+		goldenName string
+		files      map[string][]byte
+		want       []byte
+		wantFatals []string
+	}{
+		{
+			name:       "empty test name",
+			testName:   "",
+			goldenName: "junk",
+			wantFatals: []string{
+				"golden: could not determine filename for TestingT instance",
+			},
+		},
+		{
+			name:       "empty golden name",
+			testName:   "TestBar",
+			goldenName: "",
+			wantFatals: []string{
+				"golden: name cannot be empty",
+			},
+		},
+		{
+			name:       "without slashes",
+			testName:   "TestBar",
+			goldenName: "junk",
+			files: map[string][]byte{
+				filepath.Join("testdata", "TestBar", "junk.golden"): []byte(
+					"foo junk\n",
+				),
+			},
+			want: []byte("foo junk\n"),
+		},
+		{
+			name:       "with slashes in test name",
+			testName:   "TestBar/foo",
+			goldenName: "junk",
+			files: map[string][]byte{
+				filepath.Join(
+					"testdata", "TestBar", "foo", "junk.golden",
+				): []byte("foo\n"),
+			},
+			want: []byte("foo\n"),
+		},
+		{
+			name:       "with slashes in golden name",
+			testName:   "TestBar",
+			goldenName: "foo/junk",
+			files: map[string][]byte{
+				filepath.Join(
+					"testdata", "TestBar", "foo", "junk.golden",
+				): []byte("foo\n"),
+			},
+			want: []byte("foo\n"),
+		},
+		{
+			name:       "slashes and special characters",
+			testName:   `TestFoo/John's "lost" flip-flop?<>:*|"`,
+			goldenName: "junk/*plastic*",
+			files: map[string][]byte{
+				filepath.Join(
+					"testdata", "TestFoo", "John's__lost__flip-flop_______",
+					"junk", "_plastic_.golden",
+				): []byte("junk here\n"),
+			},
+			want: []byte("junk here\n"),
+		},
+		{
+			name:       "file does not exist",
+			testName:   "TestBar",
+			goldenName: "junk",
+			files:      map[string][]byte{},
+			wantFatals: []string{
+				fmt.Sprintf(
+					"golden: open %s: no such file or directory",
+					filepath.Join(
+						"/root", "testdata", "TestBar", "junk.golden",
+					),
+				),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := prepareDefaultGoldenForTests(t)
+			ft := &fakeTestingT{name: tt.testName}
+
+			for file, content := range tt.files {
+				err := fs.MkdirAll(filepath.Dir(file), 0o755)
+				require.NoError(t, err)
+
+				err = fs.WriteFile(file, content, 0o600)
+				require.NoError(t, err)
+			}
+
+			var got []byte
+			testInGoroutine(t, func() {
+				got = GetP(ft, tt.goldenName)
+			})
+
+			assert.Equal(t, tt.want, got)
+			assert.Equal(t, tt.wantFatals, ft.fatals)
+		})
+	}
+}
+
+func TestSet(t *testing.T) {
+	tests := []struct {
+		name         string
+		testName     string
+		wantFilepath string
+		content      []byte
+		wantLogs     []string
+		wantFatals   []string
+	}{
+		{
+			name:     "empty test name",
+			testName: "",
+			wantFatals: []string{
+				"golden: could not determine filename for TestingT instance",
+			},
+		},
+		{
+			name:         "without slashes",
+			testName:     "TestFoo",
+			content:      []byte("foobar here"),
+			wantFilepath: filepath.Join("testdata", "TestFoo.golden"),
+			wantLogs: []string{
+				fmt.Sprintf(
+					"golden: writing golden file: %s",
+					filepath.Join("testdata", "TestFoo.golden"),
+				),
+			},
+		},
+		{
+			name:         "with slashes",
+			testName:     "TestFoo/bar",
+			content:      []byte("foo/bar style sub-sub-folders works too"),
+			wantFilepath: filepath.Join("testdata", "TestFoo", "bar.golden"),
+			wantLogs: []string{
+				fmt.Sprintf(
+					"golden: writing golden file: %s",
+					filepath.Join("testdata", "TestFoo", "bar.golden"),
+				),
+			},
+		},
+		{
+			name:     "with spaces and special characters",
+			testName: `TestFoo/John's "lost" flip-flop?<>:*|"`,
+			content:  []byte("Did John lose his flip-flop again?"),
+			wantFilepath: filepath.Join(
+				"testdata", "TestFoo", "John's__lost__flip-flop_______.golden",
+			),
+			wantLogs: []string{
+				fmt.Sprintf(
+					"golden: writing golden file: %s",
+					filepath.Join(
+						"testdata", "TestFoo",
+						"John's__lost__flip-flop_______.golden",
+					),
+				),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := prepareDefaultGoldenForTests(t)
+			ft := &fakeTestingT{name: tt.testName}
+
+			testInGoroutine(t, func() {
+				Set(ft, tt.content)
+			})
+
+			assert.Equal(t, tt.wantLogs, ft.logs)
+			if len(tt.wantFatals) == 0 {
+				got, err := fs.ReadFile(tt.wantFilepath)
+				require.NoError(t, err)
+
+				assert.Equal(t, tt.content, got)
+
+				filePerms, err := fs.FileMode(tt.wantFilepath)
+				require.NoError(t, err)
+
+				dirPerms, err := fs.FileMode(filepath.Dir(tt.wantFilepath))
+				require.NoError(t, err)
+
+				assert.Equal(t, filePerms, DefaultFileMode)
+				assert.Equal(t, dirPerms, DefaultDirMode)
+			} else {
+				assert.Equal(t, tt.wantFatals, ft.fatals)
+				assert.False(t,
+					fs.Exists(tt.wantFilepath),
+					"file should not exist",
+				)
+			}
 		})
 	}
 }
 
 func TestSetP(t *testing.T) {
-	t.Cleanup(func() {
-		t.Log("cleaning up golden files")
-		err := os.RemoveAll(filepath.Join("testdata", "TestSetP"))
-		require.NoError(t, err)
-	})
-
-	content := []byte("This is the named golden file for TestSetP ^_^")
-	SetP(t, "sub-name", content)
-
-	b, err := ioutil.ReadFile(
-		filepath.Join("testdata", "TestSetP", "sub-name.golden"),
-	)
-	require.NoError(t, err)
-
-	assert.Equal(t, content, b)
-
 	tests := []struct {
-		name    string
-		named   string
-		file    string
-		content []byte
+		name         string
+		testName     string
+		goldenName   string
+		wantFilepath string
+		content      []byte
+		wantLogs     []string
+		wantFatals   []string
 	}{
 		{
-			name:  "",
-			named: "sub-zero-one",
-			file: filepath.Join(
-				"testdata", "TestSetP", "#00", "sub-zero-one.golden",
-			),
-			content: []byte("number zero-one sub-zero-one strikes again"),
+			name:       "empty test name",
+			testName:   "",
+			goldenName: "junk",
+			wantFatals: []string{
+				"golden: could not determine filename for TestingT instance",
+			},
 		},
 		{
-			name:  "foobar",
-			named: "email",
-			file: filepath.Join(
-				"testdata", "TestSetP", "foobar", "email.golden",
-			),
-			content: []byte("foobar here"),
+			name:       "empty golden name",
+			testName:   "TestBar",
+			goldenName: "",
+			wantFatals: []string{
+				"golden: name cannot be empty",
+			},
 		},
 		{
-			name:  "foobar",
-			named: "json",
-			file: filepath.Join(
-				"testdata", "TestSetP", "foobar#01", "json.golden",
-			),
-			content: []byte("foobar here"),
+			name:         "without slashes",
+			testName:     "TestBar",
+			goldenName:   "junk",
+			content:      []byte("junk here"),
+			wantFilepath: filepath.Join("testdata", "TestBar", "junk.golden"),
+			wantLogs: []string{
+				fmt.Sprintf(
+					"golden: writing golden file: %s",
+					filepath.Join("testdata", "TestBar", "junk.golden"),
+				),
+			},
 		},
 		{
-			name:  "john's lost flip-flop",
-			named: "left",
-			file: filepath.Join(
-				"testdata", "TestSetP", "john's_lost_flip-flop",
-				"left.golden",
+			name:       "with slashes in test name",
+			testName:   "TestBar/foo",
+			goldenName: "junk",
+			content:    []byte("foo/bar style sub-sub-folders works too"),
+			wantFilepath: filepath.Join(
+				"testdata", "TestBar", "foo", "junk.golden",
 			),
-			content: []byte("Did John lose his left flip-flop again?"),
+			wantLogs: []string{
+				fmt.Sprintf(
+					"golden: writing golden file: %s",
+					filepath.Join("testdata", "TestBar", "foo", "junk.golden"),
+				),
+			},
 		},
 		{
-			name:  "john's lost flip-flop",
-			named: "right",
-			file: filepath.Join(
-				"testdata", "TestSetP", "john's_lost_flip-flop#01",
-				"right.golden",
+			name:       "with slashes in golden name",
+			testName:   "TestBar",
+			goldenName: "foo/junk",
+			content:    []byte("foo/bar style sub-sub-folders works too"),
+			wantFilepath: filepath.Join(
+				"testdata", "TestBar", "foo", "junk.golden",
 			),
-			content: []byte("Did John lose his right flip-flop again?"),
+			wantLogs: []string{
+				fmt.Sprintf(
+					"golden: writing golden file: %s",
+					filepath.Join("testdata", "TestBar", "foo", "junk.golden"),
+				),
+			},
 		},
 		{
-			name:  "thing: it's",
-			named: "a thing!",
-			file: filepath.Join(
-				"testdata", "TestSetP", "thing__it's", "a_thing!.golden",
+			name:       "slashes and special characters",
+			testName:   `TestFoo/John's "lost" flip-flop?<>:*|"`,
+			goldenName: "junk/*plastic*",
+			content:    []byte("Did John lose his flip-flop again?"),
+			wantFilepath: filepath.Join(
+				"testdata", "TestFoo", "John's__lost__flip-flop_______",
+				"junk", "_plastic_.golden",
 			),
-			content: []byte("A thing? Really? Are we getting lazy? :P"),
+			wantLogs: []string{
+				fmt.Sprintf(
+					"golden: writing golden file: %s",
+					filepath.Join(
+						"testdata", "TestFoo", "John's__lost__flip-flop_______",
+						"junk", "_plastic_.golden",
+					),
+				),
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := FileP(t, tt.named)
+			fs := prepareDefaultGoldenForTests(t)
+			ft := &fakeTestingT{name: tt.testName}
 
-			SetP(t, tt.named, tt.content)
+			testInGoroutine(t, func() {
+				SetP(ft, tt.goldenName, tt.content)
+			})
 
-			got, err := ioutil.ReadFile(f)
-			require.NoError(t, err)
+			assert.Equal(t, tt.wantLogs, ft.logs)
+			if len(tt.wantFatals) == 0 {
+				got, err := fs.ReadFile(tt.wantFilepath)
+				require.NoError(t, err)
 
-			assert.Equal(t, tt.file, f)
-			assert.Equal(t, tt.content, got)
+				assert.Equal(t, tt.content, got)
+
+				filePerms, err := fs.FileMode(tt.wantFilepath)
+				require.NoError(t, err)
+
+				dirPerms, err := fs.FileMode(filepath.Dir(tt.wantFilepath))
+				require.NoError(t, err)
+
+				assert.Equal(t, filePerms, DefaultFileMode)
+				assert.Equal(t, dirPerms, DefaultDirMode)
+			} else {
+				assert.Equal(t, tt.wantFatals, ft.fatals)
+				assert.False(t, fs.Exists(tt.wantFilepath))
+			}
 		})
 	}
 }
@@ -381,18 +941,18 @@ func TestNew(t *testing.T) {
 	tests := []struct {
 		name string
 		args args
-		want *golden
+		want *gold
 	}{
 		{
 			name: "no options",
 			args: args{options: nil},
-			want: &golden{
+			want: &gold{
 				dirMode:    0o755,
 				fileMode:   0o644,
 				suffix:     ".golden",
 				dirname:    "testdata",
 				updateFunc: EnvUpdateFunc,
-				fs:         afero.NewOsFs(),
+				fs:         NewFS(),
 				logOnWrite: true,
 			},
 		},
@@ -405,17 +965,17 @@ func TestNew(t *testing.T) {
 					WithSuffix(".gold"),
 					WithDirname("goldstuff"),
 					WithUpdateFunc(myUpdateFunc),
-					WithFs(afero.NewMemMapFs()),
+					WithFS(testfs.New()),
 					WithSilentWrites(),
 				},
 			},
-			want: &golden{
+			want: &gold{
 				dirMode:    0o777,
 				fileMode:   0o666,
 				suffix:     ".gold",
 				dirname:    "goldstuff",
 				updateFunc: myUpdateFunc,
-				fs:         afero.NewMemMapFs(),
+				fs:         testfs.New(),
 				logOnWrite: false,
 			},
 		},
@@ -423,564 +983,16 @@ func TestNew(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			g := New(tt.args.options...)
-			got, ok := g.(*golden)
-			require.True(t, ok, "New did not returns a *golden instance")
+			got, ok := g.(*gold)
+			require.True(t, ok, "New did not returns a *gold type")
 
 			assert.Equal(t, tt.want.dirMode, got.dirMode)
 			assert.Equal(t, tt.want.fileMode, got.fileMode)
 			assert.Equal(t, tt.want.suffix, got.suffix)
 			assert.Equal(t, tt.want.dirname, got.dirname)
-			assert.Equal(t, tt.want.logOnWrite, got.logOnWrite)
 			assert.Equal(t, funcID(tt.want.updateFunc), funcID(got.updateFunc))
 			assert.IsType(t, tt.want.fs, got.fs)
-		})
-	}
-}
-
-func Test_golden_File(t *testing.T) {
-	type fields struct {
-		suffix  *string
-		dirname *string
-	}
-	tests := []struct {
-		name           string
-		testName       string
-		fields         fields
-		want           string
-		wantAborted    bool
-		wantFailCount  int
-		wantTestOutput []string
-	}{
-		{
-			name:     "top-level",
-			testName: "TestFooBar",
-			want:     filepath.Join("testdata", "TestFooBar.golden"),
-		},
-		{
-			name:     "sub-test",
-			testName: "TestFooBar/it_is_here",
-			want: filepath.Join(
-				"testdata", "TestFooBar", "it_is_here.golden",
-			),
-		},
-		{
-			name:          "blank test name",
-			testName:      "",
-			wantAborted:   true,
-			wantFailCount: 1,
-			wantTestOutput: []string{
-				"golden: could not determine filename for given " +
-					"*mocktesting.T instance\n",
-			},
-		},
-		{
-			name:     "custom dirname",
-			testName: "TestFozBar",
-			fields: fields{
-				dirname: stringPtr("goldenfiles"),
-			},
-			want: filepath.Join("goldenfiles", "TestFozBar.golden"),
-		},
-		{
-			name:     "custom suffix",
-			testName: "TestFozBaz",
-			fields: fields{
-				suffix: stringPtr(".goldfile"),
-			},
-			want: filepath.Join("testdata", "TestFozBaz.goldfile"),
-		},
-		{
-			name:     "custom dirname and suffix",
-			testName: "TestFozBar",
-			fields: fields{
-				dirname: stringPtr("goldenfiles"),
-				suffix:  stringPtr(".goldfile"),
-			},
-			want: filepath.Join("goldenfiles", "TestFozBar.goldfile"),
-		},
-		{
-			name:     "invalid chars in test name",
-			testName: `TestFooBar/foo?<>:*|"bar`,
-			want: filepath.Join(
-				"testdata", "TestFooBar", "foo_______bar.golden",
-			),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.fields.suffix == nil {
-				tt.fields.suffix = stringPtr(".golden")
-			}
-			if tt.fields.dirname == nil {
-				tt.fields.dirname = stringPtr("testdata")
-			}
-
-			g := &golden{
-				suffix:  *tt.fields.suffix,
-				dirname: *tt.fields.dirname,
-			}
-
-			mt := mocktesting.NewT(tt.testName)
-
-			var got string
-			mocktesting.Go(func() {
-				got = g.File(mt)
-			})
-
-			assert.Equal(t, tt.want, got)
-			assert.Equal(t, tt.wantAborted, mt.Aborted(), "aborted")
-			assert.Equal(t,
-				tt.wantFailCount, mt.FailedCount(), "failed count",
-			)
-			assert.Equal(t, tt.wantTestOutput, mt.Output(), "test output")
-		})
-	}
-}
-
-func Test_golden_Get(t *testing.T) {
-	type fields struct {
-		suffix  *string
-		dirname *string
-	}
-	tests := []struct {
-		name           string
-		testName       string
-		fields         fields
-		files          map[string][]byte
-		want           []byte
-		wantAborted    bool
-		wantFailCount  int
-		wantTestOutput []string
-	}{
-		{
-			name:     "file exists",
-			testName: "TestFooBar",
-			files: map[string][]byte{
-				filepath.Join("testdata", "TestFooBar.golden"): []byte(
-					"foo: bar\nhello: world",
-				),
-			},
-			want: []byte("foo: bar\nhello: world"),
-		},
-		{
-			name:          "file is missing",
-			testName:      "TestFooBar",
-			files:         map[string][]byte{},
-			wantAborted:   true,
-			wantFailCount: 1,
-			wantTestOutput: []string{
-				"golden: open " + filepath.Join(
-					"testdata", "TestFooBar.golden",
-				) + ": file does not exist\n",
-			},
-		},
-		{
-			name:     "sub-test file exists",
-			testName: "TestFooBar/it_is_here",
-			files: map[string][]byte{
-				filepath.Join(
-					"testdata", "TestFooBar", "it_is_here.golden",
-				): []byte("this is really here ^_^\n"),
-			},
-			want: []byte("this is really here ^_^\n"),
-		},
-		{
-			name:          "sub-test file is missing",
-			testName:      "TestFooBar/not_really_here",
-			files:         map[string][]byte{},
-			wantAborted:   true,
-			wantFailCount: 1,
-			wantTestOutput: []string{
-				"golden: open " + filepath.Join(
-					"testdata", "TestFooBar", "not_really_here.golden",
-				) + ": file does not exist\n",
-			},
-		},
-		{
-			name:          "blank test name",
-			testName:      "",
-			wantAborted:   true,
-			wantFailCount: 1,
-			wantTestOutput: []string{
-				"golden: could not determine filename for given " +
-					"*mocktesting.T instance\n",
-			},
-		},
-		{
-			name:     "custom dirname",
-			testName: "TestFozBar",
-			fields: fields{
-				dirname: stringPtr("goldenfiles"),
-			},
-			files: map[string][]byte{
-				filepath.Join("goldenfiles", "TestFozBar.golden"): []byte(
-					"foo: bar\nhello: world",
-				),
-			},
-			want: []byte("foo: bar\nhello: world"),
-		},
-		{
-			name:     "custom suffix",
-			testName: "TestFozBaz",
-			fields: fields{
-				suffix: stringPtr(".goldfile"),
-			},
-			files: map[string][]byte{
-				filepath.Join("testdata", "TestFozBaz.goldfile"): []byte(
-					"foo: bar\nhello: world",
-				),
-			},
-			want: []byte("foo: bar\nhello: world"),
-		},
-		{
-			name:     "custom dirname and suffix",
-			testName: "TestFozBar",
-			fields: fields{
-				dirname: stringPtr("goldenfiles"),
-				suffix:  stringPtr(".goldfile"),
-			},
-			files: map[string][]byte{
-				filepath.Join("goldenfiles", "TestFozBar.goldfile"): []byte(
-					"foo: bar\nhello: world",
-				),
-			},
-			want: []byte("foo: bar\nhello: world"),
-		},
-		{
-			name:     "invalid chars in test name",
-			testName: `TestFooBar/foo?<>:*|"bar`,
-			files: map[string][]byte{
-				filepath.Join(
-					"testdata", "TestFooBar", "foo_______bar.golden",
-				): []byte("foo: bar\nhello: world"),
-			},
-			want: []byte("foo: bar\nhello: world"),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fs := afero.NewMemMapFs()
-			for f, b := range tt.files {
-				_ = afero.WriteFile(fs, f, b, 0o644)
-			}
-
-			if tt.fields.suffix == nil {
-				tt.fields.suffix = stringPtr(".golden")
-			}
-			if tt.fields.dirname == nil {
-				tt.fields.dirname = stringPtr("testdata")
-			}
-
-			g := &golden{
-				suffix:  *tt.fields.suffix,
-				dirname: *tt.fields.dirname,
-				fs:      fs,
-			}
-
-			mt := mocktesting.NewT(tt.testName)
-
-			var got []byte
-			mocktesting.Go(func() {
-				got = g.Get(mt)
-			})
-
-			assert.Equal(t, tt.want, got)
-			assert.Equal(t, tt.wantAborted, mt.Aborted(), "aborted")
-			assert.Equal(t,
-				tt.wantFailCount, mt.FailedCount(), "failed count",
-			)
-			assert.Equal(t, tt.wantTestOutput, mt.Output(), "test output")
-		})
-	}
-}
-
-func Test_golden_FileP(t *testing.T) {
-	type args struct {
-		name string
-	}
-	type fields struct {
-		suffix  *string
-		dirname *string
-	}
-	tests := []struct {
-		name           string
-		testName       string
-		args           args
-		fields         fields
-		want           string
-		wantAborted    bool
-		wantFailCount  int
-		wantTestOutput []string
-	}{
-		{
-			name:     "top-level",
-			testName: "TestFooBar",
-			args:     args{name: "yaml"},
-			want:     filepath.Join("testdata", "TestFooBar", "yaml.golden"),
-		},
-		{
-			name:     "sub-test",
-			testName: "TestFooBar/it_is_here",
-			args:     args{name: "json"},
-			want: filepath.Join(
-				"testdata", "TestFooBar", "it_is_here", "json.golden",
-			),
-		},
-		{
-			name:          "blank test name",
-			testName:      "",
-			args:          args{name: "json"},
-			wantAborted:   true,
-			wantFailCount: 1,
-			wantTestOutput: []string{
-				"golden: could not determine filename for given " +
-					"*mocktesting.T instance\n",
-			},
-		},
-		{
-			name:     "custom dirname",
-			testName: "TestFozBar",
-			args:     args{name: "xml"},
-			fields: fields{
-				dirname: stringPtr("goldenfiles"),
-			},
-			want: filepath.Join("goldenfiles", "TestFozBar", "xml.golden"),
-		},
-		{
-			name:     "custom suffix",
-			testName: "TestFozBaz",
-			args:     args{name: "toml"},
-			fields: fields{
-				suffix: stringPtr(".goldfile"),
-			},
-			want: filepath.Join("testdata", "TestFozBaz", "toml.goldfile"),
-		},
-		{
-			name:     "custom dirname and suffix",
-			testName: "TestFozBar",
-			args:     args{name: "json"},
-			fields: fields{
-				dirname: stringPtr("goldenfiles"),
-				suffix:  stringPtr(".goldfile"),
-			},
-			want: filepath.Join("goldenfiles", "TestFozBar", "json.goldfile"),
-		},
-		{
-			name:     "invalid chars in test name",
-			testName: `TestFooBar/foo?<>:*|"bar`,
-			args:     args{name: "yml"},
-			want: filepath.Join(
-				"testdata", "TestFooBar", "foo_______bar", "yml.golden",
-			),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.fields.suffix == nil {
-				tt.fields.suffix = stringPtr(".golden")
-			}
-			if tt.fields.dirname == nil {
-				tt.fields.dirname = stringPtr("testdata")
-			}
-
-			g := &golden{
-				suffix:  *tt.fields.suffix,
-				dirname: *tt.fields.dirname,
-			}
-
-			mt := mocktesting.NewT(tt.testName)
-
-			var got string
-			mocktesting.Go(func() {
-				got = g.FileP(mt, tt.args.name)
-			})
-
-			assert.Equal(t, tt.want, got)
-			assert.Equal(t, tt.wantAborted, mt.Aborted(), "aborted")
-			assert.Equal(t,
-				tt.wantFailCount, mt.FailedCount(), "failed count",
-			)
-			assert.Equal(t, tt.wantTestOutput, mt.Output(), "test output")
-		})
-	}
-}
-
-func Test_golden_GetP(t *testing.T) {
-	type args struct {
-		name string
-	}
-	type fields struct {
-		suffix  *string
-		dirname *string
-	}
-	tests := []struct {
-		name           string
-		testName       string
-		args           args
-		fields         fields
-		files          map[string][]byte
-		want           []byte
-		wantAborted    bool
-		wantFailCount  int
-		wantTestOutput []string
-	}{
-		{
-			name:     "file exists",
-			testName: "TestFooBar",
-			args:     args{name: "yaml"},
-			files: map[string][]byte{
-				filepath.Join("testdata", "TestFooBar", "yaml.golden"): []byte(
-					"foo: bar\nhello: world",
-				),
-			},
-			want: []byte("foo: bar\nhello: world"),
-		},
-		{
-			name:          "file is missing",
-			testName:      "TestFooBar",
-			args:          args{name: "yaml"},
-			files:         map[string][]byte{},
-			wantAborted:   true,
-			wantFailCount: 1,
-			wantTestOutput: []string{
-				"golden: open " + filepath.Join(
-					"testdata", "TestFooBar", "yaml.golden",
-				) + ": file does not exist\n",
-			},
-		},
-		{
-			name:     "sub-test file exists",
-			testName: "TestFooBar/it_is_here",
-			args:     args{name: "plain"},
-			files: map[string][]byte{
-				filepath.Join(
-					"testdata", "TestFooBar", "it_is_here", "plain.golden",
-				): []byte("this is really here ^_^\n"),
-			},
-			want: []byte("this is really here ^_^\n"),
-		},
-		{
-			name:          "sub-test file is missing",
-			testName:      "TestFooBar/not_really_here",
-			args:          args{name: "plain"},
-			files:         map[string][]byte{},
-			wantAborted:   true,
-			wantFailCount: 1,
-			wantTestOutput: []string{
-				"golden: open " + filepath.Join(
-					"testdata", "TestFooBar", "not_really_here", "plain.golden",
-				) + ": file does not exist\n",
-			},
-		},
-		{
-			name:          "blank test name",
-			testName:      "",
-			args:          args{name: "plain"},
-			wantAborted:   true,
-			wantFailCount: 1,
-			wantTestOutput: []string{
-				"golden: could not determine filename for given " +
-					"*mocktesting.T instance\n",
-			},
-		},
-		{
-			name:          "blank name",
-			testName:      "TestFooBar",
-			args:          args{name: ""},
-			wantAborted:   true,
-			wantFailCount: 1,
-			wantTestOutput: []string{
-				"golden: name cannot be empty\n",
-			},
-		},
-		{
-			name:     "custom dirname",
-			testName: "TestFozBar",
-			args:     args{name: "yaml"},
-			fields: fields{
-				dirname: stringPtr("goldenfiles"),
-			},
-			files: map[string][]byte{
-				filepath.Join(
-					"goldenfiles", "TestFozBar", "yaml.golden",
-				): []byte("foo: bar\nhello: world"),
-			},
-			want: []byte("foo: bar\nhello: world"),
-		},
-		{
-			name:     "custom suffix",
-			testName: "TestFozBaz",
-			args:     args{name: "yaml"},
-			fields: fields{
-				suffix: stringPtr(".goldfile"),
-			},
-			files: map[string][]byte{
-				filepath.Join(
-					"testdata", "TestFozBaz", "yaml.goldfile",
-				): []byte("foo: bar\nhello: world"),
-			},
-			want: []byte("foo: bar\nhello: world"),
-		},
-		{
-			name:     "custom dirname and suffix",
-			testName: "TestFozBar",
-			args:     args{name: "yaml"},
-			fields: fields{
-				dirname: stringPtr("goldenfiles"),
-				suffix:  stringPtr(".goldfile"),
-			},
-			files: map[string][]byte{
-				filepath.Join(
-					"goldenfiles", "TestFozBar", "yaml.goldfile",
-				): []byte("foo: bar\nhello: world"),
-			},
-			want: []byte("foo: bar\nhello: world"),
-		},
-		{
-			name:     "invalid chars in test name",
-			testName: `TestFooBar/foo?<>:*|"bar`,
-			args:     args{name: "trash"},
-			files: map[string][]byte{
-				filepath.Join(
-					"testdata", "TestFooBar", "foo_______bar", "trash.golden",
-				): []byte("foo: bar\nhello: world"),
-			},
-			want: []byte("foo: bar\nhello: world"),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fs := afero.NewMemMapFs()
-			for f, b := range tt.files {
-				_ = afero.WriteFile(fs, f, b, 0o644)
-			}
-
-			if tt.fields.suffix == nil {
-				tt.fields.suffix = stringPtr(".golden")
-			}
-			if tt.fields.dirname == nil {
-				tt.fields.dirname = stringPtr("testdata")
-			}
-
-			g := &golden{
-				suffix:  *tt.fields.suffix,
-				dirname: *tt.fields.dirname,
-				fs:      fs,
-			}
-
-			mt := mocktesting.NewT(tt.testName)
-
-			var got []byte
-			mocktesting.Go(func() {
-				got = g.GetP(mt, tt.args.name)
-			})
-
-			assert.Equal(t, tt.want, got)
-			assert.Equal(t, tt.wantAborted, mt.Aborted(), "aborted")
-			assert.Equal(t,
-				tt.wantFailCount, mt.FailedCount(), "failed count",
-			)
-			assert.Equal(t, tt.wantTestOutput, mt.Output(), "test output")
+			assert.Equal(t, tt.want.logOnWrite, got.logOnWrite)
 		})
 	}
 }

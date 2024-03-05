@@ -34,24 +34,19 @@ SHELL := env \
 # Tools
 #
 
-TOOLS += $(TOOLDIR)/gobin
-$(TOOLDIR)/gobin:
-	GO111MODULE=off go get -u github.com/myitcv/gobin
-
 # external tool
 define tool # 1: binary-name, 2: go-import-path
 TOOLS += $(TOOLDIR)/$(1)
 
-$(TOOLDIR)/$(1): $(TOOLDIR)/gobin Makefile
-	gobin $(V) "$(2)"
+$(TOOLDIR)/$(1): Makefile
+	GOBIN="$(CURDIR)/$(TOOLDIR)" go install "$(2)"
 endef
 
-$(eval $(call tool,godoc,golang.org/x/tools/cmd/godoc))
-$(eval $(call tool,gofumpt,mvdan.cc/gofumpt))
-$(eval $(call tool,goimports,golang.org/x/tools/cmd/goimports))
-$(eval $(call tool,golangci-lint,github.com/golangci/golangci-lint/cmd/golangci-lint@v1.44))
-$(eval $(call tool,gomod,github.com/Helcaraxan/gomod))
-$(eval $(call tool,mockgen,mockgen,github.com/golang/mock/mockgen@v1.6.0))
+$(eval $(call tool,godoc,golang.org/x/tools/cmd/godoc@latest))
+$(eval $(call tool,gofumpt,mvdan.cc/gofumpt@latest))
+$(eval $(call tool,goimports,golang.org/x/tools/cmd/goimports@latest))
+$(eval $(call tool,golangci-lint,github.com/golangci/golangci-lint/cmd/golangci-lint@v1.56))
+$(eval $(call tool,gomod,github.com/Helcaraxan/gomod@latest))
 
 .PHONY: tools
 tools: $(TOOLS)

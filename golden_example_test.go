@@ -16,8 +16,7 @@ type MyStruct struct {
 
 // TestExampleMyStruct reads/writes the following golden file:
 //
-//  testdata/TestExampleMyStruct.golden
-//
+//	testdata/TestExampleMyStruct.golden
 func TestExampleMyStruct(t *testing.T) {
 	got, err := json.Marshal(&MyStruct{Foo: "Bar"})
 	require.NoError(t, err)
@@ -32,9 +31,8 @@ func TestExampleMyStruct(t *testing.T) {
 
 // TestExampleMyStructTabular reads/writes the following golden files:
 //
-//  testdata/TestExampleMyStructTabular/empty_struct.golden
-//  testdata/TestExampleMyStructTabular/full_struct.golden
-//
+//	testdata/TestExampleMyStructTabular/empty_struct.golden
+//	testdata/TestExampleMyStructTabular/full_struct.golden
 func TestExampleMyStructTabular(t *testing.T) {
 	tests := []struct {
 		name string
@@ -60,9 +58,8 @@ func TestExampleMyStructTabular(t *testing.T) {
 
 // TestExampleMyStructP reads/writes the following golden file:
 //
-//  testdata/TestExampleMyStructP/json.golden
-//  testdata/TestExampleMyStructP/xml.golden
-//
+//	testdata/TestExampleMyStructP/json.golden
+//	testdata/TestExampleMyStructP/xml.golden
 func TestExampleMyStructP(t *testing.T) {
 	gotJSON, _ := json.Marshal(&MyStruct{Foo: "Bar"})
 	gotXML, _ := xml.Marshal(&MyStruct{Foo: "Bar"})
@@ -78,11 +75,10 @@ func TestExampleMyStructP(t *testing.T) {
 
 // TestExampleMyStructTabularP reads/writes the following golden file:
 //
-//  testdata/TestExampleMyStructTabularP/empty_struct/json.golden
-//  testdata/TestExampleMyStructTabularP/empty_struct/xml.golden
-//  testdata/TestExampleMyStructTabularP/full_struct/json.golden
-//  testdata/TestExampleMyStructTabularP/full_struct/xml.golden
-//
+//	testdata/TestExampleMyStructTabularP/empty_struct/json.golden
+//	testdata/TestExampleMyStructTabularP/empty_struct/xml.golden
+//	testdata/TestExampleMyStructTabularP/full_struct/json.golden
+//	testdata/TestExampleMyStructTabularP/full_struct/xml.golden
 func TestExampleMyStructTabularP(t *testing.T) {
 	tests := []struct {
 		name string
