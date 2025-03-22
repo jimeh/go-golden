@@ -4,18 +4,13 @@ linters-settings:
     statements: 150
   gocyclo:
     min-complexity: 20
-  golint:
-    min-confidence: 0
   govet:
-    check-shadowing: true
     enable-all: true
     disable:
       - fieldalignment
   lll:
     line-length: 80
     tab-width: 4
-  maligned:
-    suggest-new: true
   misspell:
     locale: US
 
@@ -24,13 +19,11 @@ linters:
   enable:
     - asciicheck
     - bodyclose
-    - deadcode
-    - depguard
+    - copyloopvar
     - durationcheck
     - errcheck
     - errorlint
     - exhaustive
-    - exportloopref
     - funlen
     - gochecknoinits
     - goconst
@@ -58,13 +51,10 @@ linters:
     - rowserrcheck
     - sqlclosecheck
     - staticcheck
-    - structcheck
-    - tparallel
     - typecheck
     - unconvert
     - unparam
     - unused
-    - varcheck
     - wastedassign
     - whitespace
 
