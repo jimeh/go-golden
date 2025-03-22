@@ -3,7 +3,6 @@ package golden
 import (
 	"testing"
 
-	"github.com/jimeh/envctl"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -96,11 +95,13 @@ var envUpdateFuncTestCases = []struct {
 func TestEnvUpdateFunc(t *testing.T) {
 	for _, tt := range envUpdateFuncTestCases {
 		t.Run(tt.name, func(t *testing.T) {
-			envctl.WithClean(tt.env, func() {
-				got := EnvUpdateFunc()
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
 
-				assert.Equal(t, tt.want, got)
-			})
+			got := EnvUpdateFunc()
+
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

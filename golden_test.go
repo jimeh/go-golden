@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jimeh/envctl"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -433,11 +432,13 @@ func TestSetP(t *testing.T) {
 func TestUpdate(t *testing.T) {
 	for _, tt := range envUpdateFuncTestCases {
 		t.Run(tt.name, func(t *testing.T) {
-			envctl.WithClean(tt.env, func() {
-				got := Update()
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
 
-				assert.Equal(t, tt.want, got)
-			})
+			got := Update()
+
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
