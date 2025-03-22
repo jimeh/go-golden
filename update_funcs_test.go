@@ -42,6 +42,11 @@ var envUpdateFuncTestCases = []struct {
 		want: true,
 	},
 	{
+		name: "GOLDEN_UPDATE set to Y (uppercase)",
+		env:  map[string]string{"GOLDEN_UPDATE": "Y"},
+		want: true,
+	},
+	{
 		name: "GOLDEN_UPDATE set to n",
 		env:  map[string]string{"GOLDEN_UPDATE": "n"},
 		want: false,
@@ -49,6 +54,11 @@ var envUpdateFuncTestCases = []struct {
 	{
 		name: "GOLDEN_UPDATE set to t",
 		env:  map[string]string{"GOLDEN_UPDATE": "t"},
+		want: true,
+	},
+	{
+		name: "GOLDEN_UPDATE set to T (uppercase)",
+		env:  map[string]string{"GOLDEN_UPDATE": "T"},
 		want: true,
 	},
 	{
@@ -62,6 +72,11 @@ var envUpdateFuncTestCases = []struct {
 		want: true,
 	},
 	{
+		name: "GOLDEN_UPDATE set to YES (uppercase)",
+		env:  map[string]string{"GOLDEN_UPDATE": "YES"},
+		want: true,
+	},
+	{
 		name: "GOLDEN_UPDATE set to no",
 		env:  map[string]string{"GOLDEN_UPDATE": "no"},
 		want: false,
@@ -72,6 +87,11 @@ var envUpdateFuncTestCases = []struct {
 		want: true,
 	},
 	{
+		name: "GOLDEN_UPDATE set to ON (uppercase)",
+		env:  map[string]string{"GOLDEN_UPDATE": "ON"},
+		want: true,
+	},
+	{
 		name: "GOLDEN_UPDATE set to off",
 		env:  map[string]string{"GOLDEN_UPDATE": "off"},
 		want: false,
@@ -79,6 +99,16 @@ var envUpdateFuncTestCases = []struct {
 	{
 		name: "GOLDEN_UPDATE set to true",
 		env:  map[string]string{"GOLDEN_UPDATE": "true"},
+		want: true,
+	},
+	{
+		name: "GOLDEN_UPDATE set to TRUE (uppercase)",
+		env:  map[string]string{"GOLDEN_UPDATE": "TRUE"},
+		want: true,
+	},
+	{
+		name: "GOLDEN_UPDATE set to TrUe (mixed-case)",
+		env:  map[string]string{"GOLDEN_UPDATE": "TrUe"},
 		want: true,
 	},
 	{
