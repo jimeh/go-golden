@@ -61,14 +61,17 @@ jobs:
           - macos-latest
           - windows-latest
         go_version:
-          - "1.15"
-          - "1.16"
           - "1.17"
+          - "1.18"
+          - "1.19"
+          - "1.20"
+          - "stable"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go_version }}
+          check-latest: true
       - name: Run tests
         run: go test -v -count=1 -race ./...
