@@ -28,21 +28,27 @@ import "github.com/jimeh/go-golden"
 
 ```go
 func TestExampleMyStruct(t *testing.T) {
-	got, err := json.Marshal(&MyStruct{Foo: "Bar"})
-	require.NoError(t, err)
+    got, err := json.Marshal(&MyStruct{Foo: "Bar"})
+    require.NoError(t, err)
 
-	if golden.Update() {
-		golden.Set(t, got)
-	}
-	want := golden.Get(t)
+    want := golden.Do(t, got)
 
-	assert.Equal(t, want, got)
+    assert.Equal(t, want, got)
 }
 ```
 
 The above example will read/write to:
 
 - `testdata/TestExampleMyStruct.golden`
+
+The call to `golden.Do()` is equivalent to:
+
+```go
+if golden.Update() {
+    golden.Set(t, got)
+}
+want := golden.Get(t)
+```
 
 To update the golden file (have `golden.Update()` return `true`), simply set the
 `GOLDEN_UPDATE` environment variable to one of `1`, `y`, `t`, `yes`, `on`, or
