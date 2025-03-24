@@ -90,6 +90,32 @@ var envUpdateFuncTestCases = []struct {
 		env:  map[string]string{"GOLDEN_UPDATE": "foobarnopebbq"},
 		want: false,
 	},
+	// Case-insensitive test cases
+	{
+		name: "GOLDEN_UPDATE set to Y (uppercase)",
+		env:  map[string]string{"GOLDEN_UPDATE": "Y"},
+		want: true,
+	},
+	{
+		name: "GOLDEN_UPDATE set to TRUE (uppercase)",
+		env:  map[string]string{"GOLDEN_UPDATE": "TRUE"},
+		want: true,
+	},
+	{
+		name: "GOLDEN_UPDATE set to Yes (mixed case)",
+		env:  map[string]string{"GOLDEN_UPDATE": "Yes"},
+		want: true,
+	},
+	{
+		name: "GOLDEN_UPDATE set to ON (uppercase)",
+		env:  map[string]string{"GOLDEN_UPDATE": "ON"},
+		want: true,
+	},
+	{
+		name: "GOLDEN_UPDATE set to TrUe (mixed case)",
+		env:  map[string]string{"GOLDEN_UPDATE": "TrUe"},
+		want: true,
+	},
 }
 
 func TestEnvUpdateFunc(t *testing.T) {
