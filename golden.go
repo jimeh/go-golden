@@ -125,7 +125,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"testing"
 )
 
 var (
@@ -151,7 +150,7 @@ var (
 
 // File returns the filename of the golden file for the given *testing.T
 // instance as determined by t.Name().
-func File(t *testing.T) string {
+func File(t TestingT) string {
 	t.Helper()
 
 	return Default.File(t)
@@ -160,7 +159,7 @@ func File(t *testing.T) string {
 // Get returns the content of the golden file for the given *testing.T instance
 // as determined by t.Name(). If no golden file can be found/read, it will fail
 // the test by calling t.Fatal().
-func Get(t *testing.T) []byte {
+func Get(t TestingT) []byte {
 	t.Helper()
 
 	return Default.Get(t)
@@ -169,7 +168,7 @@ func Get(t *testing.T) []byte {
 // Set writes given data to the golden file for the given *testing.T instance as
 // determined by t.Name(). If writing fails it will fail the test by calling
 // t.Fatal() with error details.
-func Set(t *testing.T, data []byte) {
+func Set(t TestingT, data []byte) {
 	t.Helper()
 
 	Default.Set(t, data)
@@ -177,7 +176,7 @@ func Set(t *testing.T, data []byte) {
 
 // FileP returns the filename of the specifically named golden file for the
 // given *testing.T instance as determined by t.Name().
-func FileP(t *testing.T, name string) string {
+func FileP(t TestingT, name string) string {
 	t.Helper()
 
 	return Default.FileP(t, name)
@@ -189,7 +188,7 @@ func FileP(t *testing.T, name string) string {
 //
 // This is very similar to Get(), but it allows multiple different golden files
 // to be used within the same one *testing.T instance.
-func GetP(t *testing.T, name string) []byte {
+func GetP(t TestingT, name string) []byte {
 	t.Helper()
 
 	return Default.GetP(t, name)
@@ -201,7 +200,7 @@ func GetP(t *testing.T, name string) []byte {
 //
 // This is very similar to Set(), but it allows multiple different golden files
 // to be used within the same one *testing.T instance.
-func SetP(t *testing.T, name string, data []byte) {
+func SetP(t TestingT, name string, data []byte) {
 	t.Helper()
 
 	Default.SetP(t, name, data)
@@ -257,33 +256,29 @@ func New() *Golden {
 
 // File returns the filename of the golden file for the given *testing.T
 // instance as determined by t.Name().
-func (s *Golden) File(t *testing.T) string {
+func (s *Golden) File(t TestingT) string {
 	return s.file(t, "")
 }
 
 // Get returns the content of the golden file for the given *testing.T instance
 // as determined by t.Name(). If no golden file can be found/read, it will fail
 // the test by calling t.Fatal().
-func (s *Golden) Get(t *testing.T) []byte {
+func (s *Golden) Get(t TestingT) []byte {
 	return s.get(t, "")
 }
 
 // Set writes given data to the golden file for the given *testing.T instance as
 // determined by t.Name(). If writing fails it will fail the test by calling
 // t.Fatal() with error details.
-func (s *Golden) Set(t *testing.T, data []byte) {
+func (s *Golden) Set(t TestingT, data []byte) {
 	s.set(t, "", data)
 }
 
 // FileP returns the filename of the specifically named golden file for the
 // given *testing.T instance as determined by t.Name().
-func (s *Golden) FileP(t *testing.T, name string) string {
+func (s *Golden) FileP(t TestingT, name string) string {
 	if name == "" {
-		if t != nil {
-			t.Fatal("golden: name cannot be empty")
-		}
-
-		return ""
+		t.Fatalf("golden: name cannot be empty")
 	}
 
 	return s.file(t, name)
@@ -295,11 +290,9 @@ func (s *Golden) FileP(t *testing.T, name string) string {
 //
 // This is very similar to Get(), but it allows multiple different golden files
 // to be used within the same one *testing.T instance.
-func (s *Golden) GetP(t *testing.T, name string) []byte {
+func (s *Golden) GetP(t TestingT, name string) []byte {
 	if name == "" {
-		t.Fatal("golden: name cannot be empty")
-
-		return nil
+		t.Fatalf("golden: name cannot be empty")
 	}
 
 	return s.get(t, name)
@@ -311,19 +304,17 @@ func (s *Golden) GetP(t *testing.T, name string) []byte {
 //
 // This is very similar to Set(), but it allows multiple different golden files
 // to be used within the same one *testing.T instance.
-func (s *Golden) SetP(t *testing.T, name string, data []byte) {
+func (s *Golden) SetP(t TestingT, name string, data []byte) {
 	if name == "" {
-		t.Fatal("golden: name cannot be empty")
+		t.Fatalf("golden: name cannot be empty")
 	}
 
 	s.set(t, name, data)
 }
 
-func (s *Golden) file(t *testing.T, name string) string {
+func (s *Golden) file(t TestingT, name string) string {
 	if t.Name() == "" {
 		t.Fatalf("golden: could not determine filename for: %+v", t)
-
-		return ""
 	}
 
 	base := []string{s.Dirname, filepath.FromSlash(t.Name())}
@@ -342,7 +333,7 @@ func (s *Golden) file(t *testing.T, name string) string {
 	return strings.Join(clean, string(os.PathSeparator))
 }
 
-func (s *Golden) get(t *testing.T, name string) []byte {
+func (s *Golden) get(t TestingT, name string) []byte {
 	f := s.file(t, name)
 
 	b, err := os.ReadFile(f)
@@ -353,7 +344,7 @@ func (s *Golden) get(t *testing.T, name string) []byte {
 	return b
 }
 
-func (s *Golden) set(t *testing.T, name string, data []byte) {
+func (s *Golden) set(t TestingT, name string, data []byte) {
 	f := s.file(t, name)
 	dir := filepath.Dir(f)
 
@@ -362,8 +353,6 @@ func (s *Golden) set(t *testing.T, name string, data []byte) {
 	err := os.MkdirAll(dir, s.DirMode)
 	if err != nil {
 		t.Fatalf("golden: failed to create directory: %s", err.Error())
-
-		return
 	}
 
 	err = os.WriteFile(f, data, s.FileMode)
