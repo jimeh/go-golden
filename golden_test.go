@@ -1,14 +1,104 @@
 package golden
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestDefaults(t *testing.T) {
+	t.Run("Default", func(t *testing.T) {
+		assert.IsType(t, &Golden{}, Default)
+
+		assert.Equal(t, DefaultDirMode, Default.DirMode)
+		assert.Equal(t, DefaultFileMode, Default.FileMode)
+		assert.Equal(t, DefaultSuffix, Default.Suffix)
+		assert.Equal(t, DefaultDirname, Default.Dirname)
+
+		// Use runtime.FuncForPC() to verify the UpdateFunc value is set to
+		// the EnvUpdateFunc function by default.
+		gotFP := reflect.ValueOf(Default.UpdateFunc).Pointer()
+		gotFuncName := runtime.FuncForPC(gotFP).Name()
+		wantFP := reflect.ValueOf(EnvUpdateFunc).Pointer()
+		wantFuncName := runtime.FuncForPC(wantFP).Name()
+
+		assert.Equal(t, wantFuncName, gotFuncName)
+	})
+
+	t.Run("DefaultDirMode", func(t *testing.T) {
+		assert.Equal(t, os.FileMode(0o755), DefaultDirMode)
+	})
+
+	t.Run("DefaultFileMode", func(t *testing.T) {
+		assert.Equal(t, os.FileMode(0o644), DefaultFileMode)
+	})
+
+	t.Run("DefaultSuffix", func(t *testing.T) {
+		assert.Equal(t, ".golden", DefaultSuffix)
+	})
+
+	t.Run("DefaultDirname", func(t *testing.T) {
+		assert.Equal(t, "testdata", DefaultDirname)
+	})
+
+	t.Run("DefaultUpdateFunc", func(t *testing.T) {
+		gotFP := reflect.ValueOf(DefaultUpdateFunc).Pointer()
+		gotFuncName := runtime.FuncForPC(gotFP).Name()
+		wantFP := reflect.ValueOf(EnvUpdateFunc).Pointer()
+		wantFuncName := runtime.FuncForPC(wantFP).Name()
+		assert.Equal(t, wantFuncName, gotFuncName)
+	})
+}
+
+// TestNew is a horribly hack to test that the New() function uses the
+// package-level Default* variables.
+func TestNew(t *testing.T) {
+	// Capture the default values before we change them.
+	defaultDirMode := DefaultDirMode
+	defaultFileMode := DefaultFileMode
+	defaultSuffix := DefaultSuffix
+	defaultDirname := DefaultDirname
+	defaultUpdateFunc := DefaultUpdateFunc
+
+	// Restore the default values after the test.
+	t.Cleanup(func() {
+		DefaultDirMode = defaultDirMode
+		DefaultFileMode = defaultFileMode
+		DefaultSuffix = defaultSuffix
+		DefaultDirname = defaultDirname
+		DefaultUpdateFunc = defaultUpdateFunc
+	})
+
+	// Set all the default values to new values.
+	DefaultDirMode = os.FileMode(0o700)
+	DefaultFileMode = os.FileMode(0o600)
+	DefaultSuffix = ".gold"
+	DefaultDirname = "goldenfiles"
+
+	updateFunc := func() bool { return true }
+	DefaultUpdateFunc = updateFunc
+
+	// Create a new Golden instance with the new values.
+	got := New()
+
+	assert.Equal(t, DefaultDirMode, got.DirMode)
+	assert.Equal(t, DefaultFileMode, got.FileMode)
+	assert.Equal(t, DefaultSuffix, got.Suffix)
+	assert.Equal(t, DefaultDirname, got.Dirname)
+
+	// Verify the UpdateFunc value is set to the new value.
+	gotFP := reflect.ValueOf(got.UpdateFunc).Pointer()
+	gotFuncName := runtime.FuncForPC(gotFP).Name()
+	wantFP := reflect.ValueOf(updateFunc).Pointer()
+	wantFuncName := runtime.FuncForPC(wantFP).Name()
+
+	assert.Equal(t, wantFuncName, gotFuncName)
+}
 
 func TestFile(t *testing.T) {
 	got := File(t)
@@ -57,8 +147,8 @@ func TestGet(t *testing.T) {
 	require.NoError(t, err)
 
 	content := []byte("foobar\nhello world :)")
-	err = ioutil.WriteFile( //nolint:gosec
-		filepath.Join("testdata", "TestGet.golden"), content, 0o644,
+	err = os.WriteFile(
+		filepath.Join("testdata", "TestGet.golden"), content, 0o600,
 	)
 	require.NoError(t, err)
 
@@ -108,7 +198,7 @@ func TestGet(t *testing.T) {
 			err := os.MkdirAll(dir, 0o755)
 			require.NoError(t, err)
 
-			err = ioutil.WriteFile(f, tt.want, 0o644) //nolint:gosec
+			err = os.WriteFile(f, tt.want, 0o600)
 			require.NoError(t, err)
 
 			got := Get(t)
@@ -130,7 +220,7 @@ func TestSet(t *testing.T) {
 	content := []byte("This is the default golden file for TestSet ^_^")
 	Set(t, content)
 
-	b, err := ioutil.ReadFile(filepath.Join("testdata", "TestSet.golden"))
+	b, err := os.ReadFile(filepath.Join("testdata", "TestSet.golden"))
 	require.NoError(t, err)
 
 	assert.Equal(t, content, b)
@@ -176,7 +266,7 @@ func TestSet(t *testing.T) {
 
 			Set(t, tt.content)
 
-			got, err := ioutil.ReadFile(f)
+			got, err := os.ReadFile(f)
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.file, f)
@@ -246,9 +336,9 @@ func TestGetP(t *testing.T) {
 	require.NoError(t, err)
 
 	content := []byte("this is the named golden file for TestGetP")
-	err = ioutil.WriteFile( //nolint:gosec
+	err = os.WriteFile(
 		filepath.Join("testdata", "TestGetP", "sub-name.golden"),
-		content, 0o644,
+		content, 0o600,
 	)
 	require.NoError(t, err)
 
@@ -330,7 +420,7 @@ func TestGetP(t *testing.T) {
 			err := os.MkdirAll(dir, 0o755)
 			require.NoError(t, err)
 
-			err = ioutil.WriteFile(f, tt.want, 0o644) //nolint:gosec
+			err = os.WriteFile(f, tt.want, 0o600)
 			require.NoError(t, err)
 
 			got := GetP(t, tt.named)
@@ -350,7 +440,7 @@ func TestSetP(t *testing.T) {
 	content := []byte("This is the named golden file for TestSetP ^_^")
 	SetP(t, "sub-name", content)
 
-	b, err := ioutil.ReadFile(
+	b, err := os.ReadFile(
 		filepath.Join("testdata", "TestSetP", "sub-name.golden"),
 	)
 	require.NoError(t, err)
@@ -420,7 +510,7 @@ func TestSetP(t *testing.T) {
 
 			SetP(t, tt.named, tt.content)
 
-			got, err := ioutil.ReadFile(f)
+			got, err := os.ReadFile(f)
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.file, f)
