@@ -1,30 +1,34 @@
 // Package golden is yet another package for working with *.golden test files,
 // with a focus on simplicity through it's default behavior.
 //
-// Golden file names are based on the name of the test function and any subtest
+// Golden file names are based on the name of the test function and any sub-test
 // names by calling t.Name(). File names are sanitized to ensure they're
 // compatible with Linux, macOS and Windows systems regardless of what crazy
-// characters might be in a subtest's name.
+// characters might be in a sub-test's name.
 //
 // # Usage
 //
 // Typical usage should look something like this:
 //
 //	func TestExampleMyStruct(t *testing.T) {
-//	    got, err := json.Marshal(&MyStruct{Foo: "Bar"})
-//	    require.NoError(t, err)
+//		got, err := json.Marshal(&MyStruct{Foo: "Bar"})
+//		require.NoError(t, err)
 //
-//	    if golden.Update() {
-//	        golden.Set(t, got)
-//	    }
-//	    want := golden.Get(t)
+//		want := golden.Do(t, got)
 //
-//	    assert.Equal(t, want, got)
+//		assert.Equal(t, want, got)
 //	}
 //
 // The above example will read/write to:
 //
 //	testdata/TestExampleMyStruct.golden
+//
+// The call to golden.Do() is equivalent to:
+//
+//	if golden.Update() {
+//		golden.Set(t, got)
+//	}
+//	want := golden.Get(t)
 //
 // To update the golden file (have golden.Update() return true), simply set the
 // GOLDEN_UPDATE environment variable to one of "1", "y", "t", "yes", "on", or
@@ -33,29 +37,26 @@
 // # Sub-Tests
 //
 // As the golden filename is based on t.Name(), it works with sub-tests too,
-// ensuring each sub-test gets it's own golden file. For example:
+// ensuring each sub-test gets its own golden file. For example:
 //
 //	func TestExampleMyStructTabular(t *testing.T) {
-//	    tests := []struct {
-//	        name string
-//	        obj  *MyStruct
-//	    }{
-//	        {name: "empty struct", obj: &MyStruct{}},
-//	        {name: "full struct", obj: &MyStruct{Foo: "Bar"}},
-//	    }
-//	    for _, tt := range tests {
-//	        t.Run(tt.name, func(t *testing.T) {
-//	            got, err := json.Marshal(tt.obj)
-//	            require.NoError(t, err)
+//		tests := []struct {
+//			name string
+//			obj  *MyStruct
+//		}{
+//			{name: "empty struct", obj: &MyStruct{}},
+//			{name: "full struct", obj: &MyStruct{Foo: "Bar"}},
+//		}
+//		for _, tt := range tests {
+//			t.Run(tt.name, func(t *testing.T) {
+//				got, err := json.Marshal(tt.obj)
+//				require.NoError(t, err)
 //
-//	            if golden.Update() {
-//	                golden.Set(t, got)
-//	            }
-//	            want := golden.Get(t)
+//				want := golden.Do(t, got)
 //
-//	            assert.Equal(t, want, got)
-//	        })
-//	    }
+//				assert.Equal(t, want, got)
+//			})
+//		}
 //	}
 //
 // The above example will read/write to:
@@ -70,16 +71,14 @@
 // instance.
 //
 //	func TestExampleMyStructP(t *testing.T) {
-//	    gotJSON, _ := json.Marshal(&MyStruct{Foo: "Bar"})
-//	    gotXML, _ := xml.Marshal(&MyStruct{Foo: "Bar"})
+//		gotJSON, _ := json.Marshal(&MyStruct{Foo: "Bar"})
+//		gotXML, _ := xml.Marshal(&MyStruct{Foo: "Bar"})
 //
-//	    if golden.Update() {
-//	        golden.SetP(t, "json", gotJSON)
-//	        golden.SetP(t, "xml", gotXML)
-//	    }
+//		wantJSON := golden.DoP(t, "json", gotJSON)
+//		wantXML := golden.DoP(t, "xml", gotXML)
 //
-//	    assert.Equal(t, golden.GetP(t, "json"), gotJSON)
-//	    assert.Equal(t, golden.GetP(t, "xml"), gotXML)
+//		assert.Equal(t, wantJSON, gotJSON)
+//		assert.Equal(t, wantXML, gotXML)
 //	}
 //
 // The above example will read/write to:
@@ -90,27 +89,25 @@
 // This works with tabular tests too of course:
 //
 //	func TestExampleMyStructTabularP(t *testing.T) {
-//	    tests := []struct {
-//	        name string
-//	        obj  *MyStruct
-//	    }{
-//	        {name: "empty struct", obj: &MyStruct{}},
-//	        {name: "full struct", obj: &MyStruct{Foo: "Bar"}},
-//	    }
-//	    for _, tt := range tests {
-//	        t.Run(tt.name, func(t *testing.T) {
-//	            gotJSON, _ := json.Marshal(tt.obj)
-//	            gotXML, _ := xml.Marshal(tt.obj)
+//		tests := []struct {
+//			name string
+//			obj  *MyStruct
+//		}{
+//			{name: "empty struct", obj: &MyStruct{}},
+//			{name: "full struct", obj: &MyStruct{Foo: "Bar"}},
+//		}
+//		for _, tt := range tests {
+//			t.Run(tt.name, func(t *testing.T) {
+//				gotJSON, _ := json.Marshal(tt.obj)
+//				gotXML, _ := xml.Marshal(tt.obj)
 //
-//	            if golden.Update() {
-//	                golden.SetP(t, "json", gotJSON)
-//	                golden.SetP(t, "xml", gotXML)
-//	            }
+//				wantJSON := golden.DoP(t, "json", gotJSON)
+//				wantXML := golden.DoP(t, "xml", gotXML)
 //
-//	            assert.Equal(t, golden.GetP(t, "json"), gotJSON)
-//	            assert.Equal(t, golden.GetP(t, "xml"), gotXML)
-//	        })
-//	    }
+//				assert.Equal(t, wantJSON, gotJSON)
+//				assert.Equal(t, wantXML, gotXML)
+//			})
+//		}
 //	}
 //
 // The above example will read/write to:
@@ -148,6 +145,15 @@ var (
 	DefaultUpdateFunc = EnvUpdateFunc
 )
 
+// Do is a convenience function for calling Update(), Set(), and Get() in a
+// single call. If Update() returns true, data will be written to the golden
+// file using Set(), before reading it back with Get().
+func Do(t TestingT, data []byte) []byte {
+	t.Helper()
+
+	return Default.Do(t, data)
+}
+
 // File returns the filename of the golden file for the given *testing.T
 // instance as determined by t.Name().
 func File(t TestingT) string {
@@ -172,6 +178,15 @@ func Set(t TestingT, data []byte) {
 	t.Helper()
 
 	Default.Set(t, data)
+}
+
+// DoP is a convenience function for calling Update(), SetP(), and GetP() in a
+// single call. If Update() returns true, data will be written to the golden
+// file using SetP(), before reading it back with GetP().
+func DoP(t TestingT, name string, data []byte) []byte {
+	t.Helper()
+
+	return Default.DoP(t, name, data)
 }
 
 // FileP returns the filename of the specifically named golden file for the
@@ -228,7 +243,7 @@ type Golden struct {
 	FileMode os.FileMode
 
 	// Suffix determines the filename suffix for all golden files. Typically
-	// this should be ".golden", but can be changed here if needed.
+	// this would be ".golden".
 	Suffix string
 
 	// Dirname is the name of the top-level directory at the root of the package
@@ -241,9 +256,7 @@ type Golden struct {
 	UpdateFunc UpdateFunc
 }
 
-// New returns a new *Golden instance with default values correctly
-// populated. This is ideally how you should create a custom *Golden, and then
-// modify the relevant fields as you see fit.
+// New returns a new *Golden instance with default values correctly populated.
 func New() *Golden {
 	return &Golden{
 		DirMode:    DefaultDirMode,
@@ -254,9 +267,24 @@ func New() *Golden {
 	}
 }
 
+// Do is a convenience function for calling Update(), Set(), and Get() in a
+// single call. If Update() returns true, data will be written to the golden
+// file using Set(), before reading it back with Get().
+func (s *Golden) Do(t TestingT, data []byte) []byte {
+	t.Helper()
+
+	if s.Update() {
+		s.Set(t, data)
+	}
+
+	return s.Get(t)
+}
+
 // File returns the filename of the golden file for the given *testing.T
 // instance as determined by t.Name().
 func (s *Golden) File(t TestingT) string {
+	t.Helper()
+
 	return s.file(t, "")
 }
 
@@ -264,6 +292,8 @@ func (s *Golden) File(t TestingT) string {
 // as determined by t.Name(). If no golden file can be found/read, it will fail
 // the test by calling t.Fatal().
 func (s *Golden) Get(t TestingT) []byte {
+	t.Helper()
+
 	return s.get(t, "")
 }
 
@@ -271,12 +301,33 @@ func (s *Golden) Get(t TestingT) []byte {
 // determined by t.Name(). If writing fails it will fail the test by calling
 // t.Fatal() with error details.
 func (s *Golden) Set(t TestingT, data []byte) {
+	t.Helper()
+
 	s.set(t, "", data)
+}
+
+// DoP is a convenience function for calling Update(), SetP(), and GetP() in a
+// single call. If Update() returns true, data will be written to the golden
+// file using SetP(), before reading it back with GetP().
+func (s *Golden) DoP(t TestingT, name string, data []byte) []byte {
+	t.Helper()
+
+	if name == "" {
+		t.Fatalf("golden: name cannot be empty")
+	}
+
+	if s.Update() {
+		s.SetP(t, name, data)
+	}
+
+	return s.GetP(t, name)
 }
 
 // FileP returns the filename of the specifically named golden file for the
 // given *testing.T instance as determined by t.Name().
 func (s *Golden) FileP(t TestingT, name string) string {
+	t.Helper()
+
 	if name == "" {
 		t.Fatalf("golden: name cannot be empty")
 	}
@@ -291,6 +342,8 @@ func (s *Golden) FileP(t TestingT, name string) string {
 // This is very similar to Get(), but it allows multiple different golden files
 // to be used within the same one *testing.T instance.
 func (s *Golden) GetP(t TestingT, name string) []byte {
+	t.Helper()
+
 	if name == "" {
 		t.Fatalf("golden: name cannot be empty")
 	}
@@ -305,6 +358,8 @@ func (s *Golden) GetP(t TestingT, name string) []byte {
 // This is very similar to Set(), but it allows multiple different golden files
 // to be used within the same one *testing.T instance.
 func (s *Golden) SetP(t TestingT, name string, data []byte) {
+	t.Helper()
+
 	if name == "" {
 		t.Fatalf("golden: name cannot be empty")
 	}
@@ -312,9 +367,19 @@ func (s *Golden) SetP(t TestingT, name string, data []byte) {
 	s.set(t, name, data)
 }
 
+// Update returns true when golden is set to update golden files. Should be used
+// to determine if golden.Set() or golden.SetP() should be called or not.
+//
+// Default behavior uses EnvUpdateFunc() to check if the "GOLDEN_UPDATE"
+// environment variable is set to a truthy value. To customize set a new
+// UpdateFunc value on *Golden.
+func (s *Golden) Update() bool {
+	return s.UpdateFunc()
+}
+
 func (s *Golden) file(t TestingT, name string) string {
 	if t.Name() == "" {
-		t.Fatalf("golden: could not determine filename for: %+v", t)
+		t.Fatalf("golden: could not determine filename")
 	}
 
 	base := []string{s.Dirname, filepath.FromSlash(t.Name())}
@@ -359,14 +424,4 @@ func (s *Golden) set(t TestingT, name string, data []byte) {
 	if err != nil {
 		t.Fatalf("golden: filed to write file: %s", err.Error())
 	}
-}
-
-// Update returns true when golden is set to update golden files. Should be used
-// to determine if golden.Set() or golden.SetP() should be called or not.
-//
-// Default behavior uses EnvUpdateFunc() to check if the "GOLDEN_UPDATE"
-// environment variable is set to a truthy value. To customize set a new
-// UpdateFunc value on *Golden.
-func (s *Golden) Update() bool {
-	return s.UpdateFunc()
 }

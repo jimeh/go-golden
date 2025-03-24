@@ -10,6 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// The tests in this file are examples from the README and the package-level Go
+// documentation.
+
 type MyStruct struct {
 	Foo string `json:"foo,omitempty"`
 }
@@ -21,10 +24,7 @@ func TestExampleMyStruct(t *testing.T) {
 	got, err := json.Marshal(&MyStruct{Foo: "Bar"})
 	require.NoError(t, err)
 
-	if golden.Update() {
-		golden.Set(t, got)
-	}
-	want := golden.Get(t)
+	want := golden.Do(t, got)
 
 	assert.Equal(t, want, got)
 }
@@ -46,10 +46,7 @@ func TestExampleMyStructTabular(t *testing.T) {
 			got, err := json.Marshal(tt.obj)
 			require.NoError(t, err)
 
-			if golden.Update() {
-				golden.Set(t, got)
-			}
-			want := golden.Get(t)
+			want := golden.Do(t, got)
 
 			assert.Equal(t, want, got)
 		})
@@ -64,13 +61,11 @@ func TestExampleMyStructP(t *testing.T) {
 	gotJSON, _ := json.Marshal(&MyStruct{Foo: "Bar"})
 	gotXML, _ := xml.Marshal(&MyStruct{Foo: "Bar"})
 
-	if golden.Update() {
-		golden.SetP(t, "json", gotJSON)
-		golden.SetP(t, "xml", gotXML)
-	}
+	wantJSON := golden.DoP(t, "json", gotJSON)
+	wantXML := golden.DoP(t, "xml", gotXML)
 
-	assert.Equal(t, golden.GetP(t, "json"), gotJSON)
-	assert.Equal(t, golden.GetP(t, "xml"), gotXML)
+	assert.Equal(t, wantJSON, gotJSON)
+	assert.Equal(t, wantXML, gotXML)
 }
 
 // TestExampleMyStructTabularP reads/writes the following golden file:
@@ -92,13 +87,11 @@ func TestExampleMyStructTabularP(t *testing.T) {
 			gotJSON, _ := json.Marshal(tt.obj)
 			gotXML, _ := xml.Marshal(tt.obj)
 
-			if golden.Update() {
-				golden.SetP(t, "json", gotJSON)
-				golden.SetP(t, "xml", gotXML)
-			}
+			wantJSON := golden.DoP(t, "json", gotJSON)
+			wantXML := golden.DoP(t, "xml", gotXML)
 
-			assert.Equal(t, golden.GetP(t, "json"), gotJSON)
-			assert.Equal(t, golden.GetP(t, "xml"), gotXML)
+			assert.Equal(t, wantJSON, gotJSON)
+			assert.Equal(t, wantXML, gotXML)
 		})
 	}
 }

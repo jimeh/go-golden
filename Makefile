@@ -33,6 +33,7 @@ SHELL := env \
 #
 # Tools
 #
+
 # external tool
 define tool # 1: binary-name, 2: go-import-path
 TOOLS += $(TOOLDIR)/$(1)

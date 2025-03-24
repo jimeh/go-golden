@@ -100,6 +100,102 @@ func TestNew(t *testing.T) {
 	assert.Equal(t, wantFuncName, gotFuncName)
 }
 
+func TestDo(t *testing.T) {
+	t.Cleanup(func() {
+		err := os.RemoveAll(filepath.Join("testdata", "TestDo"))
+		require.NoError(t, err)
+		err = os.Remove(filepath.Join("testdata", "TestDo.golden"))
+		require.NoError(t, err)
+	})
+
+	//
+	// Test when Update is false
+	//
+	content := []byte("This is the golden file for TestDo")
+	err := os.MkdirAll("testdata", 0o755)
+	require.NoError(t, err)
+
+	err = os.WriteFile(
+		filepath.Join("testdata", "TestDo.golden"),
+		content, 0o600,
+	)
+	require.NoError(t, err)
+
+	newContent := []byte("This should not be written")
+	t.Setenv("GOLDEN_UPDATE", "false")
+	got := Do(t, newContent)
+	assert.Equal(t, content, got)
+
+	// Verify file wasn't changed
+	fileContent, err := os.ReadFile(
+		filepath.Join("testdata", "TestDo.golden"),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, content, fileContent)
+
+	//
+	// Test when Update is true
+	//
+	updatedContent := []byte("This is the updated content for TestDo")
+	t.Setenv("GOLDEN_UPDATE", "true")
+	got = Do(t, updatedContent)
+	assert.Equal(t, updatedContent, got)
+
+	// Verify file was updated
+	fileContent, err = os.ReadFile(
+		filepath.Join("testdata", "TestDo.golden"),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, updatedContent, fileContent)
+
+	//
+	// Test with sub-tests
+	//
+	tests := []struct {
+		name    string
+		content []byte
+	}{
+		{
+			name:    "simple",
+			content: []byte("Simple content for sub-test"),
+		},
+		{
+			name:    "complex/path",
+			content: []byte("Complex path content for sub-test"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Test with Update true
+			t.Setenv("GOLDEN_UPDATE", "true")
+			got := Do(t, tt.content)
+			assert.Equal(t, tt.content, got)
+
+			// Verify file was written with correct content
+			f := File(t)
+			fileContent, err := os.ReadFile(f)
+			require.NoError(t, err)
+			assert.Equal(t, tt.content, fileContent)
+
+			// Test with Update false
+			t.Setenv("GOLDEN_UPDATE", "false")
+
+			newContent := []byte(
+				"This should not be written in sub-test",
+			)
+			got = Do(t, newContent)
+			assert.Equal(t, tt.content, got)
+
+			// Verify file wasn't changed
+			f = File(t)
+			fileContent, err = os.ReadFile(f)
+			require.NoError(t, err)
+			assert.Equal(t, tt.content, fileContent)
+		})
+	}
+}
+
 func TestFile(t *testing.T) {
 	got := File(t)
 
@@ -271,6 +367,97 @@ func TestSet(t *testing.T) {
 
 			assert.Equal(t, tt.file, f)
 			assert.Equal(t, tt.content, got)
+		})
+	}
+}
+
+func TestDoP(t *testing.T) {
+	t.Cleanup(func() {
+		err := os.RemoveAll(filepath.Join("testdata", "TestDoP"))
+		require.NoError(t, err)
+	})
+
+	//
+	// Test when Update is false
+	//
+	name := "test-format"
+	content := []byte("This is the golden file for TestDoP")
+	err := os.MkdirAll(filepath.Join("testdata", "TestDoP"), 0o755)
+	require.NoError(t, err)
+
+	goldenFile := filepath.Join("testdata", "TestDoP", name+".golden")
+	err = os.WriteFile(goldenFile, content, 0o600)
+	require.NoError(t, err)
+
+	newContent := []byte("This should not be written")
+	t.Setenv("GOLDEN_UPDATE", "false")
+	got := DoP(t, name, newContent)
+	assert.Equal(t, content, got)
+
+	// Verify file wasn't changed
+	fileContent, err := os.ReadFile(goldenFile)
+	require.NoError(t, err)
+	assert.Equal(t, content, fileContent)
+
+	//
+	// Test when Update is true
+	//
+	updatedContent := []byte("This is the updated content for TestDoP")
+	t.Setenv("GOLDEN_UPDATE", "true")
+	got = DoP(t, name, updatedContent)
+	assert.Equal(t, updatedContent, got)
+
+	// Verify file was updated
+	fileContent, err = os.ReadFile(goldenFile)
+	require.NoError(t, err)
+	assert.Equal(t, updatedContent, fileContent)
+
+	//
+	// Test with sub-tests
+	//
+	tests := []struct {
+		testName string
+		name     string
+		content  []byte
+	}{
+		{
+			testName: "json format",
+			name:     "json",
+			content:  []byte(`{"key": "value"}`),
+		},
+		{
+			testName: "xml format",
+			name:     "xml",
+			content:  []byte(`<root><key>value</key></root>`),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.testName, func(t *testing.T) {
+			// Test with Update true
+			t.Setenv("GOLDEN_UPDATE", "true")
+			got := DoP(t, tt.name, tt.content)
+			assert.Equal(t, tt.content, got)
+
+			// Verify file was written with correct content
+			f := FileP(t, tt.name)
+			fileContent, err := os.ReadFile(f)
+			require.NoError(t, err)
+			assert.Equal(t, tt.content, fileContent)
+
+			// Test with Update false
+			t.Setenv("GOLDEN_UPDATE", "false")
+			newContent := []byte(
+				"This should not be written in sub-test",
+			)
+			got = DoP(t, tt.name, newContent)
+			assert.Equal(t, tt.content, got)
+
+			// Verify file wasn't changed
+			f = FileP(t, tt.name)
+			fileContent, err = os.ReadFile(f)
+			require.NoError(t, err)
+			assert.Equal(t, tt.content, fileContent)
 		})
 	}
 }
