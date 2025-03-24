@@ -33,24 +33,19 @@ SHELL := env \
 #
 # Tools
 #
-
-TOOLS += $(TOOLDIR)/gobin
-$(TOOLDIR)/gobin:
-	GO111MODULE=off go get -u github.com/myitcv/gobin
-
 # external tool
 define tool # 1: binary-name, 2: go-import-path
 TOOLS += $(TOOLDIR)/$(1)
 
-$(TOOLDIR)/$(1): $(TOOLDIR)/gobin Makefile
-	gobin $(V) "$(2)"
+$(TOOLDIR)/$(1): Makefile
+	GOBIN="$(CURDIR)/$(TOOLDIR)" go install "$(2)"
 endef
 
-$(eval $(call tool,godoc,golang.org/x/tools/cmd/godoc))
-$(eval $(call tool,gofumpt,mvdan.cc/gofumpt))
-$(eval $(call tool,goimports,golang.org/x/tools/cmd/goimports))
-$(eval $(call tool,golangci-lint,github.com/golangci/golangci-lint/cmd/golangci-lint@v1.42))
-$(eval $(call tool,gomod,github.com/Helcaraxan/gomod))
+$(eval $(call tool,godoc,golang.org/x/tools/cmd/godoc@latest))
+$(eval $(call tool,gofumpt,mvdan.cc/gofumpt@latest))
+$(eval $(call tool,goimports,golang.org/x/tools/cmd/goimports@latest))
+$(eval $(call tool,golangci-lint,github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64))
+$(eval $(call tool,gomod,github.com/Helcaraxan/gomod@latest))
 
 .PHONY: tools
 tools: $(TOOLS)
@@ -186,20 +181,3 @@ check-tidy:
 docs: $(TOOLDIR)/godoc
 	$(info serviing docs on http://127.0.0.1:6060/pkg/$(GOMODNAME)/)
 	@godoc -http=127.0.0.1:6060
-
-#
-# Release
-#
-
-.PHONY: new-version
-new-version: check-npx
-	npx standard-version
-
-.PHONY: next-version
-next-version: check-npx
-	npx standard-version --dry-run
-
-.PHONY: check-npx
-check-npx:
-	$(if $(shell which npx),,\
-		$(error No npx found in PATH, please install NodeJS))
