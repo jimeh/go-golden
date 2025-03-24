@@ -75,3 +75,16 @@ jobs:
           check-latest: true
       - name: Run tests
         run: go test -v -count=1 -race ./...
+
+  release-please:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    outputs:
+      release_created: ${{ steps.release-please.outputs.release_created }}
+      version: ${{ steps.release-please.outputs.version }}
+    steps:
+      - uses: jimeh/release-please-manifest-action@v2
+        id: release-please
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
