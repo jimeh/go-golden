@@ -122,30 +122,39 @@
 package golden
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-const (
-	DefaultDirMode  = 0o755
-	DefaultFileMode = 0o644
-	DefaultSuffix   = ".golden"
-	DefaultDirname  = "testdata"
+var (
+	// Default is the default *Golden instance. All package-level functions use
+	// the Default instance.
+	Default = New()
+
+	// DefaultDirMode is the default DirMode value used by New().
+	DefaultDirMode = os.FileMode(0o755)
+
+	// DefaultFileMode is the default FileMode value used by New().
+	DefaultFileMode = os.FileMode(0o644)
+
+	// DefaultSuffix is the default Suffix value used by New().
+	DefaultSuffix = ".golden"
+
+	// DefaultDirname is the default Dirname value used by New().
+	DefaultDirname = "testdata"
+
+	// DefaultUpdateFunc is the default UpdateFunc value used by New().
+	DefaultUpdateFunc = EnvUpdateFunc
 )
-
-var DefaultUpdateFunc = EnvUpdateFunc
-
-var global = New()
 
 // File returns the filename of the golden file for the given *testing.T
 // instance as determined by t.Name().
 func File(t *testing.T) string {
 	t.Helper()
 
-	return global.File(t)
+	return Default.File(t)
 }
 
 // Get returns the content of the golden file for the given *testing.T instance
@@ -154,7 +163,7 @@ func File(t *testing.T) string {
 func Get(t *testing.T) []byte {
 	t.Helper()
 
-	return global.Get(t)
+	return Default.Get(t)
 }
 
 // Set writes given data to the golden file for the given *testing.T instance as
@@ -163,7 +172,7 @@ func Get(t *testing.T) []byte {
 func Set(t *testing.T, data []byte) {
 	t.Helper()
 
-	global.Set(t, data)
+	Default.Set(t, data)
 }
 
 // FileP returns the filename of the specifically named golden file for the
@@ -171,7 +180,7 @@ func Set(t *testing.T, data []byte) {
 func FileP(t *testing.T, name string) string {
 	t.Helper()
 
-	return global.FileP(t, name)
+	return Default.FileP(t, name)
 }
 
 // GetP returns the content of the specifically named golden file belonging
@@ -183,7 +192,7 @@ func FileP(t *testing.T, name string) string {
 func GetP(t *testing.T, name string) []byte {
 	t.Helper()
 
-	return global.GetP(t, name)
+	return Default.GetP(t, name)
 }
 
 // SetP writes given data of the specifically named golden file belonging to
@@ -195,7 +204,7 @@ func GetP(t *testing.T, name string) []byte {
 func SetP(t *testing.T, name string, data []byte) {
 	t.Helper()
 
-	global.SetP(t, name, data)
+	Default.SetP(t, name, data)
 }
 
 // Update returns true when golden is set to update golden files. Should be used
@@ -205,7 +214,7 @@ func SetP(t *testing.T, name string, data []byte) {
 // environment variable is set to a truthy value. To customize create a custom
 // *Golden instance with New() and set a new UpdateFunc value.
 func Update() bool {
-	return global.Update()
+	return Default.Update()
 }
 
 // Golden handles all interactions with golden files. The top-level package
@@ -336,7 +345,7 @@ func (s *Golden) file(t *testing.T, name string) string {
 func (s *Golden) get(t *testing.T, name string) []byte {
 	f := s.file(t, name)
 
-	b, err := ioutil.ReadFile(f)
+	b, err := os.ReadFile(f)
 	if err != nil {
 		t.Fatalf("golden: failed reading %s: %s", f, err.Error())
 	}
@@ -357,7 +366,7 @@ func (s *Golden) set(t *testing.T, name string, data []byte) {
 		return
 	}
 
-	err = ioutil.WriteFile(f, data, s.FileMode)
+	err = os.WriteFile(f, data, s.FileMode)
 	if err != nil {
 		t.Fatalf("golden: filed to write file: %s", err.Error())
 	}
