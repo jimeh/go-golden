@@ -11,6 +11,37 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// assertSameFunc asserts that two functions are the same by comparing their
+// function names via reflection.
+func assertSameFunc(t *testing.T, want, got interface{}) {
+	t.Helper()
+
+	// Verify both arguments are functions
+	wantType := reflect.TypeOf(want)
+	gotType := reflect.TypeOf(got)
+
+	if wantType.Kind() != reflect.Func {
+		t.Fatalf(
+			"assertSameFunc: 'want' argument is not a function, got %s",
+			wantType.Kind(),
+		)
+	}
+
+	if gotType.Kind() != reflect.Func {
+		t.Fatalf(
+			"assertSameFunc: 'got' argument is not a function, got %s",
+			gotType.Kind(),
+		)
+	}
+
+	gotFP := reflect.ValueOf(got).Pointer()
+	gotFuncName := runtime.FuncForPC(gotFP).Name()
+	wantFP := reflect.ValueOf(want).Pointer()
+	wantFuncName := runtime.FuncForPC(wantFP).Name()
+
+	assert.Equal(t, wantFuncName, gotFuncName)
+}
+
 func TestDefaults(t *testing.T) {
 	t.Run("Default", func(t *testing.T) {
 		assert.IsType(t, &Golden{}, Default)
@@ -19,15 +50,7 @@ func TestDefaults(t *testing.T) {
 		assert.Equal(t, DefaultFileMode, Default.FileMode)
 		assert.Equal(t, DefaultSuffix, Default.Suffix)
 		assert.Equal(t, DefaultDirname, Default.Dirname)
-
-		// Use runtime.FuncForPC() to verify the UpdateFunc value is set to
-		// the EnvUpdateFunc function by default.
-		gotFP := reflect.ValueOf(Default.UpdateFunc).Pointer()
-		gotFuncName := runtime.FuncForPC(gotFP).Name()
-		wantFP := reflect.ValueOf(EnvUpdateFunc).Pointer()
-		wantFuncName := runtime.FuncForPC(wantFP).Name()
-
-		assert.Equal(t, wantFuncName, gotFuncName)
+		assertSameFunc(t, EnvUpdateFunc, Default.UpdateFunc)
 	})
 
 	t.Run("DefaultDirMode", func(t *testing.T) {
@@ -47,57 +70,129 @@ func TestDefaults(t *testing.T) {
 	})
 
 	t.Run("DefaultUpdateFunc", func(t *testing.T) {
-		gotFP := reflect.ValueOf(DefaultUpdateFunc).Pointer()
-		gotFuncName := runtime.FuncForPC(gotFP).Name()
-		wantFP := reflect.ValueOf(EnvUpdateFunc).Pointer()
-		wantFuncName := runtime.FuncForPC(wantFP).Name()
-		assert.Equal(t, wantFuncName, gotFuncName)
+		assertSameFunc(t, EnvUpdateFunc, DefaultUpdateFunc)
+	})
+
+	t.Run("customized Default* variables", func(t *testing.T) {
+		// Capture the default values before we change them.
+		defaultDirMode := DefaultDirMode
+		defaultFileMode := DefaultFileMode
+		defaultSuffix := DefaultSuffix
+		defaultDirname := DefaultDirname
+		defaultUpdateFunc := DefaultUpdateFunc
+
+		// Restore the default values after the test.
+		t.Cleanup(func() {
+			DefaultDirMode = defaultDirMode
+			DefaultFileMode = defaultFileMode
+			DefaultSuffix = defaultSuffix
+			DefaultDirname = defaultDirname
+			DefaultUpdateFunc = defaultUpdateFunc
+		})
+
+		// Set all the default values to new values.
+		DefaultDirMode = os.FileMode(0o700)
+		DefaultFileMode = os.FileMode(0o600)
+		DefaultSuffix = ".gold"
+		DefaultDirname = "goldenfiles"
+
+		updateFunc := func() bool { return true }
+		DefaultUpdateFunc = updateFunc
+
+		// Create a new Golden instance with the new values.
+		got := New()
+
+		assert.Equal(t, DefaultDirMode, got.DirMode)
+		assert.Equal(t, DefaultFileMode, got.FileMode)
+		assert.Equal(t, DefaultSuffix, got.Suffix)
+		assert.Equal(t, DefaultDirname, got.Dirname)
+		assertSameFunc(t, updateFunc, got.UpdateFunc)
 	})
 }
 
-// TestNew is a horribly hack to test that the New() function uses the
-// package-level Default* variables.
 func TestNew(t *testing.T) {
-	// Capture the default values before we change them.
-	defaultDirMode := DefaultDirMode
-	defaultFileMode := DefaultFileMode
-	defaultSuffix := DefaultSuffix
-	defaultDirname := DefaultDirname
-	defaultUpdateFunc := DefaultUpdateFunc
-
-	// Restore the default values after the test.
-	t.Cleanup(func() {
-		DefaultDirMode = defaultDirMode
-		DefaultFileMode = defaultFileMode
-		DefaultSuffix = defaultSuffix
-		DefaultDirname = defaultDirname
-		DefaultUpdateFunc = defaultUpdateFunc
+	t.Run("defaults (no options)", func(t *testing.T) {
+		g := New()
+		assert.Equal(t, DefaultDirMode, g.DirMode)
+		assert.Equal(t, DefaultFileMode, g.FileMode)
+		assert.Equal(t, DefaultSuffix, g.Suffix)
+		assert.Equal(t, DefaultDirname, g.Dirname)
+		assertSameFunc(t, EnvUpdateFunc, g.UpdateFunc)
 	})
 
-	// Set all the default values to new values.
-	DefaultDirMode = os.FileMode(0o700)
-	DefaultFileMode = os.FileMode(0o600)
-	DefaultSuffix = ".gold"
-	DefaultDirname = "goldenfiles"
+	// Test each option individually
+	t.Run("WithDirMode", func(t *testing.T) {
+		customMode := os.FileMode(0o700)
+		g := New(WithDirMode(customMode))
+		assert.Equal(t, customMode, g.DirMode)
+		assert.Equal(t, DefaultFileMode, g.FileMode)
+		assert.Equal(t, DefaultSuffix, g.Suffix)
+		assert.Equal(t, DefaultDirname, g.Dirname)
+		assertSameFunc(t, EnvUpdateFunc, g.UpdateFunc)
+	})
 
-	updateFunc := func() bool { return true }
-	DefaultUpdateFunc = updateFunc
+	t.Run("WithFileMode", func(t *testing.T) {
+		customMode := os.FileMode(0o600)
+		g := New(WithFileMode(customMode))
+		assert.Equal(t, DefaultDirMode, g.DirMode)
+		assert.Equal(t, customMode, g.FileMode)
+		assert.Equal(t, DefaultSuffix, g.Suffix)
+		assert.Equal(t, DefaultDirname, g.Dirname)
+		assertSameFunc(t, EnvUpdateFunc, g.UpdateFunc)
+	})
 
-	// Create a new Golden instance with the new values.
-	got := New()
+	t.Run("WithSuffix", func(t *testing.T) {
+		customSuffix := ".my-suffix"
+		g := New(WithSuffix(customSuffix))
+		assert.Equal(t, DefaultDirMode, g.DirMode)
+		assert.Equal(t, DefaultFileMode, g.FileMode)
+		assert.Equal(t, customSuffix, g.Suffix)
+		assert.Equal(t, DefaultDirname, g.Dirname)
+		assertSameFunc(t, EnvUpdateFunc, g.UpdateFunc)
+	})
 
-	assert.Equal(t, DefaultDirMode, got.DirMode)
-	assert.Equal(t, DefaultFileMode, got.FileMode)
-	assert.Equal(t, DefaultSuffix, got.Suffix)
-	assert.Equal(t, DefaultDirname, got.Dirname)
+	t.Run("WithDirname", func(t *testing.T) {
+		customDirname := "fixtures/generated"
+		g := New(WithDirname(customDirname))
+		assert.Equal(t, DefaultDirMode, g.DirMode)
+		assert.Equal(t, DefaultFileMode, g.FileMode)
+		assert.Equal(t, DefaultSuffix, g.Suffix)
+		assert.Equal(t, customDirname, g.Dirname)
+		assertSameFunc(t, EnvUpdateFunc, g.UpdateFunc)
+	})
 
-	// Verify the UpdateFunc value is set to the new value.
-	gotFP := reflect.ValueOf(got.UpdateFunc).Pointer()
-	gotFuncName := runtime.FuncForPC(gotFP).Name()
-	wantFP := reflect.ValueOf(updateFunc).Pointer()
-	wantFuncName := runtime.FuncForPC(wantFP).Name()
+	t.Run("WithUpdateFunc", func(t *testing.T) {
+		customUpdateFunc := func() bool { return true }
+		g := New(WithUpdateFunc(customUpdateFunc))
+		assert.Equal(t, DefaultDirMode, g.DirMode)
+		assert.Equal(t, DefaultFileMode, g.FileMode)
+		assert.Equal(t, DefaultSuffix, g.Suffix)
+		assert.Equal(t, DefaultDirname, g.Dirname)
+		assertSameFunc(t, customUpdateFunc, g.UpdateFunc)
+	})
 
-	assert.Equal(t, wantFuncName, gotFuncName)
+	// Test multiple options at once
+	t.Run("MultipleOptions", func(t *testing.T) {
+		customDirMode := os.FileMode(0o700)
+		customFileMode := os.FileMode(0o600)
+		customSuffix := ".fixture"
+		customDirname := "fixtures"
+		customUpdateFunc := func() bool { return true }
+
+		g := New(
+			WithDirMode(customDirMode),
+			WithFileMode(customFileMode),
+			WithSuffix(customSuffix),
+			WithDirname(customDirname),
+			WithUpdateFunc(customUpdateFunc),
+		)
+
+		assert.Equal(t, customDirMode, g.DirMode)
+		assert.Equal(t, customFileMode, g.FileMode)
+		assert.Equal(t, customSuffix, g.Suffix)
+		assert.Equal(t, customDirname, g.Dirname)
+		assertSameFunc(t, customUpdateFunc, g.UpdateFunc)
+	})
 }
 
 func TestDo(t *testing.T) {

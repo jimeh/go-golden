@@ -257,14 +257,21 @@ type Golden struct {
 }
 
 // New returns a new *Golden instance with default values correctly populated.
-func New() *Golden {
-	return &Golden{
+// It accepts zero or more Option functions that can modify the default values.
+func New(opts ...Option) *Golden {
+	g := &Golden{
 		DirMode:    DefaultDirMode,
 		FileMode:   DefaultFileMode,
 		Suffix:     DefaultSuffix,
 		Dirname:    DefaultDirname,
 		UpdateFunc: DefaultUpdateFunc,
 	}
+
+	for _, opt := range opts {
+		opt(g)
+	}
+
+	return g
 }
 
 // Do is a convenience function for calling Update(), Set(), and Get() in a
